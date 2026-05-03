@@ -213,10 +213,12 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
                 {isMcpConnecting ? <Activity className="h-4 w-4 animate-spin" /> : "Link"}
               </Button>
             </div>
-            <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-md mt-2">
-              <p className="text-[9px] text-blue-400 leading-tight">
-                <strong>NOTE:</strong> If running on your local PC, you MUST use an <strong>ngrok</strong> tunnel or public IP. "localhost" will not work from the cloud.
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg mt-2">
+              <p className="text-[10px] text-blue-400 font-bold mb-1 underline">MOBLE USER GUIDE:</p>
+              <p className="text-[9px] text-blue-300 leading-tight">
+                Since you don't have a PC, you need a <strong>Windows VPS</strong> to run the MT5 Terminal & MCP Bridge 24/7. Use the "RD Client" app on your phone to manage your VPS.
               </p>
+              <Button variant="link" className="text-[9px] h-auto p-0 text-blue-200 mt-1">View VPS Setup Steps →</Button>
             </div>
           </div>
         </CardContent>
