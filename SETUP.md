@@ -1,40 +1,42 @@
-# 🚀 MT-AI Pro :: VPS Setup Guide (Mobile User)
+# 🚀 MT-AI Pro :: REVERSE BRIDGE SETUP (Complete Rewire)
 
-Since you are using a mobile phone and have a VPS with MetaTrader 5 (MT5) installed, follow these exact steps to link your terminal to the AI webapp.
+This application uses a "Reverse Bridge" architecture. Instead of the webapp calling your VPS, the MetaTrader 5 Expert Advisor (EA) calls the webapp every second to sync data and fetch trades.
 
-## Step 1: Prepare MT5 Settings
+## 1. Deploy & Prepare
+- Ensure the app is deployed (Vercel/Cloud Run).
+- Copy your Public App URL: `https://your-app.vercel.app`
+
+## 2. MetaTrader 5 Configuration
 1. Open **MetaTrader 5** on your VPS.
-2. Go to **Tools** → **Options** (or press Ctrl+O).
-3. Click the **Expert Advisors** tab.
-4. Check these boxes:
-   - [x] **Allow automated trading**
-   - [x] **Allow WebRequest for listed URL:**
-5. Click the "**+ Add new URL...**" button and add your Vercel WebApp URL:
-   - `https://your-webapp-url.vercel.app` (Copy this from your mobile browser).
+2. Go to **Tools** → **Options** → **Expert Advisors**.
+3. Enable: `[x] Allow automated trading`.
+4. Enable: `[x] Allow WebRequest for listed URL:`.
+5. Add your exact WebApp URL to the list: `https://your-app.vercel.app`
 
-## Step 2: Install the Bridge EA
-1. Open **MetaEditor** (Press F4 in MT5).
-2. Right-click on the `Experts` folder in the Navigator → `New File`.
-3. Choose `Expert Advisor (template)` → Name it `Bridge_EA`.
-4. Delete everything in the file and paste the code from **MT5_Bridge_EA.mq5** provided earlier.
-5. Click **Compile** (Top toolbar or F7).
-   - *Ensure 0 errors in the toolbox at the bottom.*
+## 3. Install the Expert Advisor
+1. Open **MetaEditor** (F4).
+2. Create or open `MT5_Bridge_EA.mq5`.
+3. Paste the complete MQL5 source code provided.
+4. Click **Compile** (F7).
+5. Ensure there are **0 errors** in the Toolbox.
 
-## Step 3: Run the EA
-1. Go back to MetaTrader 5.
-2. In the Navigator (Ctrl+N), find **Expert Advisors** → `Bridge_EA`.
-3. Drag it onto **any chart** (e.g., EURUSD M1).
-4. In the **Inputs** tab:
-   - `WebAppURL`: Paste your Vercel URL (e.g., `https://my-trading-app.vercel.app`).
-   - `PollInterval`: Leave at `1000`.
+## 4. Launch AI Trading
+1. Go back to MT5.
+2. Find `MT5_Bridge_EA` in the Navigator.
+3. Drag it onto **one chart** (e.g. EURUSD M1).
+4. **Inputs Tab:** Set `WebAppURL` to your Vercel URL.
 5. Click **OK**.
+6. Check the **Journal** tab. You should see `✅ Ping OK` every second.
 
-## Step 4: Verification
-1. Check the MT5 **Experts** tab (bottom Terminal window).
-2. You should see: `MT5 AI Bridge EA Started`.
-3. Open your mobile app.
-4. The dashboard will instantly show "**EA-LINKED**" or a **Blinking Green Dot** next to your balance.
-5. You can now execute trades from your phone, and they will trigger on your VPS terminal automatically.
+## 5. WebApp Controls
+- Open your WebApp URL on your phone or PC.
+- You should see 🟢 **EA-LIVE** and your real MT5 Balance/Equity.
+- Enable **AUTO** switch at the top to let Gemini AI take control.
+- Adjust **Risk %** and **Symbol** settings.
+- Run **Intelligence Analysis** to see what the AI is thinking.
 
 ---
-**💡 Jugad Note:** If `npx` or `node` is missing on your VPS, don't worry. This MQL5 EA works directly inside MT5 and doesn't need any extra software.
+**⚠️ Important:** 
+- The AI will only trade if `eaConnected` is true (Green badge).
+- The AI uses "Standard MT5 Python Integration" logic inside the EA.
+- Keep the chart open on the VPS 24/7 for the heartbeat to stay alive.

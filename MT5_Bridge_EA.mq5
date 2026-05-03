@@ -5,19 +5,21 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2024, MT-AI Pro Team"
 #property link      "https://mt-ai.pro"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 #property script_show_inputs
 
 #include <Trade\Trade.mqh>
 
 //--- INPUT PARAMETERS
-input string   WebAppURL = "https://YOUR-APP-URL.vercel.app"; // WebApp Base URL (No trailing slash)
-input int      PollInterval = 1000;                          // Poll Interval in Milliseconds
+input string   WebAppURL    = "https://YOUR-APP.vercel.app"; // URL without trailing slash
+input int      PingInterval = 1;                             // Heartbeat interval in seconds
+input double   DefaultLot   = 0.01;
+input bool     ShowLogs     = true;
 
 //--- GLOBAL VARIABLES
 CTrade         trade;
-datetime       last_poll_time = 0;
+uint           last_ping_time = 0;
 string         headers = "Content-Type: application/json\r\n";
 
 //+------------------------------------------------------------------+
@@ -25,19 +27,17 @@ string         headers = "Content-Type: application/json\r\n";
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("MT5 AI Bridge EA Started");
-   Print("Target WebApp: ", WebAppURL);
+   if(WebAppURL == "https://YOUR-APP.vercel.app")
+   {
+      Alert("Please set your WebAppURL in EA Inputs!");
+      return(INIT_PARAMETERS_INCORRECT);
+   }
    
-   // Enable WebRequest for the URL in Tools -> Options -> Expert Advisors
+   trade.SetExpertMagicNumber(20260503);
+   Print("MT5 AI Bridge EA v2.0 Started");
+   Print("Connecting to: ", WebAppURL);
+   
    return(INIT_SUCCEEDED);
-}
-
-//+------------------------------------------------------------------+
-//| Expert deinitialization function                                 |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   Print("MT5 AI Bridge EA Stopped");
 }
 
 //+------------------------------------------------------------------+
@@ -45,142 +45,202 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   static uint last_tick_time = 0;
-   uint current_time = GetTickCount();
-   
-   if(current_time - last_tick_time < (uint)PollInterval)
+   uint current_tick = GetTickCount();
+   if(current_tick - last_ping_time < (uint)PingInterval * 1000)
       return;
       
-   last_tick_time = current_time;
+   last_ping_time = current_tick;
    
-   SendAccountInfo();
-   PollOrders();
-}
-
-//+------------------------------------------------------------------+
-//| Send Account Details to WebApp                                   |
-//+------------------------------------------------------------------+
-void SendAccountInfo()
-{
-   char post_data[];
-   char result[];
-   string result_headers;
-   
-   string json = StringFormat(
-      "{\"balance\":%G, \"equity\":%G, \"margin\":%G, \"login\":\"%s\", \"server\":\"%s\", \"currency\":\"%s\"}",
-      AccountInfoDouble(ACCOUNT_BALANCE),
-      AccountInfoDouble(ACCOUNT_EQUITY),
-      AccountInfoDouble(ACCOUNT_MARGIN),
-      (string)AccountInfoInteger(ACCOUNT_LOGIN),
-      AccountInfoString(ACCOUNT_SERVER),
-      AccountInfoString(ACCOUNT_CURRENCY)
-   );
-   
-   StringToCharArray(json, post_data);
-   
-   int res = WebRequest("POST", WebAppURL + "/api/ea/account", headers, 5000, post_data, result, result_headers);
-   
-   if(res == -1)
+   if(SendPing())
    {
-      Print("Error in SendAccountInfo. Error code: ", GetLastError());
-      if(GetLastError() == 4060)
-         Print("Check: Tools -> Options -> Expert Advisors -> Allow WebRequest for: ", WebAppURL);
+      FetchAndExecuteOrders();
    }
 }
 
 //+------------------------------------------------------------------+
-//| Poll WebApp for Pending Orders                                  |
+//| Send Ping with Full Account & Position Data                     |
 //+------------------------------------------------------------------+
-void PollOrders()
+bool SendPing()
+{
+   char post_data[];
+   char result[];
+   string result_headers;
+   
+   string positions_json = BuildPositionsJSON();
+   
+   string json = StringFormat(
+      "{\"balance\":%G, \"equity\":%G, \"margin\":%G, \"freeMargin\":%G, \"login\":\"%s\", \"server\":\"%s\", \"currency\":\"%s\", \"leverage\":%lld, \"positions\":%s}",
+      AccountInfoDouble(ACCOUNT_BALANCE),
+      AccountInfoDouble(ACCOUNT_EQUITY),
+      AccountInfoDouble(ACCOUNT_MARGIN),
+      AccountInfoDouble(ACCOUNT_FREEMARGIN),
+      (string)AccountInfoInteger(ACCOUNT_LOGIN),
+      AccountInfoString(ACCOUNT_SERVER),
+      AccountInfoString(ACCOUNT_CURRENCY),
+      AccountInfoInteger(ACCOUNT_LEVERAGE),
+      positions_json
+   );
+   
+   StringToCharArray(json, post_data);
+   
+   int res = WebRequest("POST", WebAppURL + "/api/ea/ping", headers, 5000, post_data, result, result_headers);
+   
+   if(res == 200)
+   {
+      if(ShowLogs) Print("✅ Ping OK");
+      return true;
+   }
+   else
+   {
+      Print("❌ Ping Failed. WebRequest Error: ", res, " | GetLastError: ", GetLastError());
+      return false;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Build JSON string for all open positions                         |
+//+------------------------------------------------------------------+
+string BuildPositionsJSON()
+{
+   string json = "[";
+   int total = PositionsTotal();
+   for(int i=0; i<total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionSelectByTicket(ticket))
+      {
+         if(i > 0) json += ",";
+         json += StringFormat(
+            "{\"ticket\":%llu, \"symbol\":\"%s\", \"type\":\"%s\", \"volume\":%G, \"openPrice\":%G, \"currentPrice\":%G, \"profit\":%G, \"sl\":%G, \"tp\":%G}",
+            ticket,
+            PositionGetString(POSITION_SYMBOL),
+            (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+            PositionGetDouble(POSITION_VOLUME),
+            PositionGetDouble(POSITION_PRICE_OPEN),
+            PositionGetDouble(POSITION_PRICE_CURRENT),
+            PositionGetDouble(POSITION_PROFIT),
+            PositionGetDouble(POSITION_SL),
+            PositionGetDouble(POSITION_TP)
+         );
+      }
+   }
+   json += "]";
+   return json;
+}
+
+//+------------------------------------------------------------------+
+//| Poll for Pending Orders                                          |
+//+------------------------------------------------------------------+
+void FetchAndExecuteOrders()
 {
    char result[];
    string result_headers;
    char post_data[];
    
-   int res = WebRequest("GET", WebAppURL + "/api/ea/poll", headers, 5000, post_data, result, result_headers);
+   int res = WebRequest("GET", WebAppURL + "/api/ea/orders", headers, 5000, post_data, result, result_headers);
    
    if(res == 200)
    {
       string response = CharArrayToString(result);
-      if(StringFind(response, "\"orders\":[]") == -1) // If orders array is not empty
+      // Looking for orders array content
+      if(StringFind(response, "\"orders\":[]") == -1)
       {
-         ProcessOrders(response);
+         Print("📦 Orders Received: ", response);
+         ExecuteOrdersFromJSON(response);
       }
    }
 }
 
 //+------------------------------------------------------------------+
-//| Parse and Execute Orders                                         |
+//| Simple JSON parser and executor                                  |
 //+------------------------------------------------------------------+
-void ProcessOrders(string json)
+void ExecuteOrdersFromJSON(string json)
 {
-   // Simple JSON parser for basic order structure: {"orders":[{"symbol":"EURUSD","action":"buy","volume":0.1}]}
-   int start_pos = StringFind(json, "{");
-   while(start_pos != -1)
+   int start = StringFind(json, "{\"id\":");
+   while(start != -1)
    {
-      int action_pos = StringFind(json, "\"action\":\"", start_pos);
-      if(action_pos == -1) break;
+      string id = ExtractString(json, "id", start);
+      string action = ExtractString(json, "action", start);
+      string symbol = ExtractString(json, "symbol", start);
+      double volume = ExtractDouble(json, "volume", start);
       
-      string action = ExtractStringValue(json, "action", action_pos);
-      string symbol = ExtractStringValue(json, "symbol", action_pos - 100); // Look back a bit for symbol
-      double volume = ExtractDoubleValue(json, "volume", action_pos);
-      
-      if(symbol == "" || symbol == "null") symbol = _Symbol;
+      Print("⚡ Processing Order: ", id, " | ", action, " ", symbol, " ", volume);
       
       bool success = false;
       if(action == "buy")
          success = trade.Buy(volume, symbol);
       else if(action == "sell")
          success = trade.Sell(volume, symbol);
+      else if(action == "close")
+         success = ClosePosition(symbol);
          
-      SendResult(action, symbol, volume, success, trade.ResultOrder());
+      SendTradeResult(id, action, symbol, volume, success);
       
-      start_pos = StringFind(json, "{", action_pos + 10);
+      start = StringFind(json, "{\"id\":", start + 10);
    }
 }
 
 //+------------------------------------------------------------------+
-//| Send Trade Result back to WebApp                                 |
+//| Close all positions for a symbol                                 |
 //+------------------------------------------------------------------+
-void SendResult(string action, string symbol, double volume, bool success, ulong ticket)
+bool ClosePosition(string symbol)
+{
+   bool all_closed = true;
+   for(int i=PositionsTotal()-1; i>=0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionSelectByTicket(ticket))
+      {
+         if(PositionGetString(POSITION_SYMBOL) == symbol)
+         {
+            if(!trade.PositionClose(ticket)) all_closed = false;
+         }
+      }
+   }
+   return all_closed;
+}
+
+//+------------------------------------------------------------------+
+//| Send Result of Trade Execution                                  |
+//+------------------------------------------------------------------+
+void SendTradeResult(string id, string action, string symbol, double volume, bool success)
 {
    char post_data[];
    char result[];
    string result_headers;
    
-   string status = success ? "FILLED" : "REJECTED";
    string json = StringFormat(
-      "{\"action\":\"%s\", \"symbol\":\"%s\", \"volume\":%G, \"status\":\"%s\", \"ticket\":%llu}",
-      action, symbol, volume, status, ticket
+      "{\"orderId\":\"%s\", \"action\":\"%s\", \"symbol\":\"%s\", \"volume\":%G, \"success\":%s, \"ticket\":%llu, \"balance\":%G, \"equity\":%G}",
+      id, action, symbol, volume, (success ? "true" : "false"), trade.ResultOrder(),
+      AccountInfoDouble(ACCOUNT_BALANCE), AccountInfoDouble(ACCOUNT_EQUITY)
    );
    
    StringToCharArray(json, post_data);
    WebRequest("POST", WebAppURL + "/api/ea/result", headers, 5000, post_data, result, result_headers);
 }
 
-//+------------------------------------------------------------------+
-//| Helper: Extract String from JSON                                 |
-//+------------------------------------------------------------------+
-string ExtractStringValue(string json, string key, int search_start)
+//--- JSON HELPERS
+
+string ExtractString(string json, string key, int search_start)
 {
    string pattern = "\"" + key + "\":\"";
-   int pos = StringFind(json, pattern, MathMax(0, search_start));
+   int pos = StringFind(json, pattern, search_start);
+   if(pos == -1) // handle space
+   {
+      pattern = "\"" + key + "\": \"";
+      pos = StringFind(json, pattern, search_start);
+   }
    if(pos == -1) return "";
    
    int start = pos + StringLen(pattern);
    int end = StringFind(json, "\"", start);
-   if(end == -1) return "";
-   
    return StringSubstr(json, start, end - start);
 }
 
-//+------------------------------------------------------------------+
-//| Helper: Extract Double from JSON                                 |
-//+------------------------------------------------------------------+
-double ExtractDoubleValue(string json, string key, int search_start)
+double ExtractDouble(string json, string key, int search_start)
 {
    string pattern = "\"" + key + "\":";
-   int pos = StringFind(json, pattern, MathMax(0, search_start));
+   int pos = StringFind(json, pattern, search_start);
    if(pos == -1) return 0;
    
    int start = pos + StringLen(pattern);
@@ -188,5 +248,7 @@ double ExtractDoubleValue(string json, string key, int search_start)
    if(end == -1) end = StringFind(json, "}", start);
    if(end == -1) return 0;
    
-   return StringToDouble(StringSubstr(json, start, end - start));
+   string val = StringSubstr(json, start, end - start);
+   StringReplace(val, " ", "");
+   return StringToDouble(val);
 }
