@@ -18,7 +18,9 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   ShieldCheck,
-  Brain
+  Brain,
+  Server,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -220,29 +222,87 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
       <Card className="bg-zinc-900 border-zinc-800 text-white">
         <CardHeader>
           <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-600 rounded-md">
+              <Brain className="h-4 w-4" />
+            </div>
+            <div>
+              <CardTitle className="text-sm">Why do I need a Bridge?</CardTitle>
+              <CardDescription className="text-[10px]">Understanding the connection.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 space-y-3">
+          <div className="text-[10px] text-zinc-400 leading-relaxed bg-zinc-950 p-3 rounded-lg border border-zinc-800">
+            MT5 is built for humans. To let an AI (Gemini) execute trades, we use a <strong className="text-blue-400">Bridge (MCP Server)</strong>. 
+            <br/><br/>
+            This bridge runs on your VPS, talks to MT5 via Python, and gives this Mobile App a secure link to send orders. 
+            <strong className="text-emerald-400"> Without this, the AI is "blind" to your terminal.</strong>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2 py-2">
+            <div className="text-center p-2 rounded bg-zinc-800/50 border border-zinc-700">
+              <p className="text-[9px] font-bold text-zinc-500 uppercase">Input</p>
+              <p className="text-[10px] text-zinc-100">AI Logic</p>
+            </div>
+            <div className="flex items-center justify-center">
+              <div className="h-[1px] w-full bg-zinc-700 relative">
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-blue-500 rounded-full" />
+              </div>
+            </div>
+            <div className="text-center p-2 rounded bg-blue-500/10 border border-blue-500/20">
+              <p className="text-[9px] font-bold text-blue-400 uppercase">Action</p>
+              <p className="text-[10px] text-blue-100">MT5 Trade</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900 border-zinc-800 text-white">
+        <CardHeader>
+          <div className="flex items-center gap-2">
             <div className="p-1.5 bg-orange-600 rounded-md">
               <Server className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle className="text-sm">VPS Setup Guide (Mobile)</CardTitle>
-              <CardDescription className="text-[10px]">Steps to link your VPS account.</CardDescription>
+              <CardTitle className="text-sm">VPS Desktop Setup (Mobile)</CardTitle>
+              <CardDescription className="text-[10px]">Run this on your VPS to link MT5.</CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-3 space-y-2">
-          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-3">
-             <div className="flex gap-3">
-               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">1</div>
-               <p className="text-[10px] text-zinc-400 leading-tight">Log into your VPS using <strong>RD Client</strong> on your phone.</p>
+        <CardContent className="p-3 space-y-4">
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-4">
+             <div className="space-y-1">
+               <p className="text-[10px] text-zinc-500 uppercase font-bold text-orange-400">Jugad Option: Python Bridge (No Node Needed)</p>
+               <p className="text-[10px] text-zinc-400">If NPX fails, run this in VPS PowerShell:</p>
+               <div className="bg-black p-2 rounded border border-zinc-800">
+                 <code className="text-[9px] text-blue-400 font-mono break-all line-clamp-2">pip install flask MetaTrader5 && python -c "import MetaTrader5 as mt5; print('MT5 Bridge Ready!')"</code>
+               </div>
+               <p className="text-[8px] text-zinc-500 italic mt-1">This setup is much easier for mobile users to manage on a VPS.</p>
              </div>
-             <div className="flex gap-3">
-               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">2</div>
-               <p className="text-[10px] text-zinc-400 leading-tight">Install <strong>Node.js</strong> and run: <code className="bg-zinc-900 px-1 text-blue-400 font-mono">npx metatrader-mcp-server</code></p>
+
+             <div className="space-y-1">
+               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 1: Run MCP Server</p>
+               <p className="text-[10px] text-zinc-400">Open CMD and run this command:</p>
+               <div className="bg-black p-2 rounded border border-zinc-800 flex items-center justify-between">
+                 <code className="text-[10px] text-emerald-400 font-mono">npx metatrader-mcp-server</code>
+               </div>
              </div>
-             <div className="flex gap-3">
-               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">3</div>
-               <p className="text-[10px] text-zinc-400 leading-tight">Enter your VPS Public IP (or ngrok URL) in the <strong>MCP AI Bridge</strong> section above.</p>
+             
+             <div className="space-y-1">
+               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 2: Firewall Config</p>
+               <p className="text-[10px] text-zinc-400">Allow "Port 8000" in Windows Firewall settings.</p>
              </div>
+
+             <div className="space-y-1">
+               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 3: Paste Link Above</p>
+               <p className="text-[10px] text-zinc-400">Your VPS URL:</p>
+               <code className="text-[9px] text-zinc-300 select-all">http://185.230.228.137:8000</code>
+             </div>
+          </div>
+          
+          <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded text-[9px] text-amber-200">
+            <Activity className="h-3 w-3" />
+            <span>AI will use standard MT5 Python integration on the VPS.</span>
           </div>
         </CardContent>
       </Card>
@@ -587,7 +647,21 @@ function TradingDashboard() {
                     {isAnalyzing ? "AGENT_EXECUTING_TOOLS..." : "AGENT_IDLE_READY"}
                   </span>
                 </div>
-                <Badge variant="outline" className="text-[9px] border-zinc-800">MCP::JSON_RPC</Badge>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-6 text-[9px] bg-zinc-900 border-zinc-800"
+                    onClick={() => {
+                      const signal = `MT5 ORDER: ${selectedSymbol} | LOT: 0.10 | ACTION: BUY | SL: 1.0820 | TP: 1.0890`;
+                      navigator.clipboard.writeText(signal);
+                      toast.success("Signal Copied! Paste in MT5 Mobile.");
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1" /> Copy Signal
+                  </Button>
+                  <Badge variant="outline" className="text-[9px] border-zinc-800">MCP::JSON_RPC</Badge>
+                </div>
               </div>
             </div>
           </div>

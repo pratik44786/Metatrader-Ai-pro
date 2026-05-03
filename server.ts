@@ -32,7 +32,7 @@ async function startServer() {
   };
 
   // Gemini Tools definition for MT5 MCP
-  const mt5Tools = [
+  const mt5Tools: any[] = [
     {
       functionDeclarations: [
         {

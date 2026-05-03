@@ -18,6 +18,8 @@ export interface AccountInfo {
   history: any[];
   brokerConnected: boolean;
   brokerConfig: { login: string, server: string } | null;
+  mcpConnected: boolean;
+  mcpUrl: string | null;
 }
 
 export interface MarketData {
