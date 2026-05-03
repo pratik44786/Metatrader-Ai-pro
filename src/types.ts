@@ -16,6 +16,8 @@ export interface AccountInfo {
   positions: Position[];
   autoTradingEnabled: boolean;
   history: any[];
+  brokerConnected: boolean;
+  brokerConfig: { login: string, server: string } | null;
 }
 
 export interface MarketData {

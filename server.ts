@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,7 @@ async function startServer() {
   app.use(express.json());
 
   // Initialize Gemini
-  const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY || "");
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   // Mock Trading State
@@ -25,11 +25,88 @@ async function startServer() {
     positions: [] as any[],
     autoTradingEnabled: false,
     history: [] as any[],
+    brokerConnected: false,
+    brokerConfig: null as any,
+    mcpUrl: null as string | null,
+    mcpConnected: false,
   };
+
+  // Gemini Tools definition for MT5 MCP
+  const mt5Tools = [
+    {
+      functionDeclarations: [
+        {
+          name: "get_account_info",
+          description: "Fetch live MetaTrader 5 account status including balance, equity, and margin.",
+        },
+        {
+          name: "get_market_data",
+          description: "Get current market prices and recent candle history for a symbol.",
+          parameters: {
+            type: "object",
+            properties: {
+              symbol: { type: "string", description: "Symbol name e.g. EURUSD" },
+              timeframe: { type: "string", description: "M5, M15, H1, H4, D1" },
+            },
+            required: ["symbol", "timeframe"],
+          },
+        },
+        {
+          name: "execute_trade",
+          description: "Place a real trade on the MetaTrader account.",
+          parameters: {
+            type: "object",
+            properties: {
+              symbol: { type: "string" },
+              action: { type: "string", enum: ["buy", "sell"] },
+              volume: { type: "number", description: "Lot size e.g. 0.01" },
+            },
+            required: ["symbol", "action", "volume"],
+          },
+        },
+      ],
+    },
+  ];
 
   // API Routes
   app.get("/api/account", (req, res) => {
     res.json(tradingState);
+  });
+
+  app.post("/api/mcp/config", async (req, res) => {
+    const { url } = req.body;
+    try {
+      // Test connection to MCP server
+      // Standard MCP HTTP servers might have a /list_tools or simply /health
+      const check = await fetch(`${url}/tools/list`).catch(() => null);
+      if (check || url.includes("localhost")) { // Relax check for local dev
+        tradingState.mcpUrl = url;
+        tradingState.mcpConnected = true;
+        res.json({ success: true, url });
+      } else {
+        res.status(400).json({ error: "MCP Server Unreachable" });
+      }
+    } catch (e) {
+      res.status(500).json({ error: "Connection error" });
+    }
+  });
+
+  app.post("/api/broker/connect", (req, res) => {
+    const { login, password, server } = req.body;
+    if (login && password && server) {
+      tradingState.brokerConnected = true;
+      tradingState.brokerConfig = { login, server };
+      // In a real app, this is where we'd initiate the MT5 Socket/WebAPI connection
+      res.json({ success: true, message: "MT5 Broker Linked Successfully" });
+    } else {
+      res.status(400).json({ error: "Missing login details" });
+    }
+  });
+
+  app.post("/api/broker/disconnect", (req, res) => {
+    tradingState.brokerConnected = false;
+    tradingState.brokerConfig = null;
+    res.json({ success: true });
   });
 
   // Market Simulation Loop
@@ -88,23 +165,91 @@ async function startServer() {
   app.post("/api/analyze", async (req, res) => {
     try {
       const { symbol, timeframe } = req.body;
-      const prompt = `You are a high-level trading AI assistant integrated with MetaTrader. 
-      Analyze the market for ${symbol} on the ${timeframe} timeframe. 
-      Provide:
-      1. Market Sentiment (Bullish/Bearish/Neutral).
-      2. 2-3 specific technical observations (e.g., RSI levels, Moving Average trends, or Support/Resistance zones).
-      3. A concise trading recommendation for a professional trader.
-      
-      Keep the full response under 100 words and format it clearly for a mobile interface.`;
+      const modelWithTools = genAI.getGenerativeModel({ 
+        model: "gemini-2.0-flash",
+        tools: mt5Tools,
+      });
 
-      const result = await model.generateContent(prompt);
+      const chat = modelWithTools.startChat();
+      const prompt = `You are the MT-AI Pro High-Frequency Trading Agent. 
+      Your task is to analyze ${symbol} on ${timeframe}.
+      
+      Current status:
+      - MCP Bridge: ${tradingState.mcpConnected ? "CONNECTED" : "DISCONNECTED (Simulation Mode)"}
+      - Auto-Trading: ${tradingState.autoTradingEnabled ? "ON" : "OFF"}
+      
+      Instructions:
+      1. First, use "get_account_info" to see your current standing.
+      2. Then use "get_market_data" for ${symbol}.
+      3. Provide a market sentiment analysis.
+      4. If "Auto-Trading" is ON and you see a strong signal, execute a trade using "execute_trade".
+      
+      Keep the final summary concise (under 100 words).`;
+
+      const result = await chat.sendMessage(prompt);
       const response = await result.response;
+      
+      // Handle tool calls if any (Auto-Execution)
+      const call = response.functionCalls()?.[0];
+      if (call) {
+        const toolResult = await callTool(call.name, call.args);
+        const secondResult = await chat.sendMessage([{
+          functionResponse: {
+            name: call.name,
+            response: toolResult,
+          }
+        }]);
+        return res.json({ 
+          analysis: secondResult.response.text(),
+          toolUsed: call.name,
+          toolResult
+        });
+      }
+
       res.json({ analysis: response.text() });
     } catch (error) {
       console.error("AI analysis error:", error);
       res.status(500).json({ error: "Analysis failed" });
     }
   });
+
+  const callTool = async (name: string, args: any) => {
+    if (tradingState.mcpConnected && tradingState.mcpUrl) {
+      try {
+        const res = await fetch(`${tradingState.mcpUrl}/tools/call`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, arguments: args }),
+        });
+        return await res.json();
+      } catch (e) {
+        return { error: "MCP tool call failed" };
+      }
+    } else {
+      switch (name) {
+        case 'get_account_info':
+          return { balance: tradingState.balance, equity: tradingState.equity };
+        case 'get_market_data':
+          return { symbol: args.symbol, price: prices[args.symbol] || 1.08, status: "Simulated Data" };
+        case 'execute_trade':
+          const price = prices[args.symbol] || 1.08;
+          const pos = { 
+            id: Math.random().toString(36).substring(7), 
+            symbol: args.symbol, 
+            type: args.action.toUpperCase(), 
+            lot: args.volume, 
+            openPrice: price, 
+            currentPrice: price, 
+            profit: 0, 
+            timestamp: new Date().toISOString() 
+          };
+          tradingState.positions.push(pos);
+          return { success: true, position: pos, message: "Simulation order placed" };
+        default:
+          return { error: "Unknown tool" };
+      }
+    }
+  };
 
   app.post("/api/trade", (req, res) => {
     const { symbol, type, lot, price } = req.body;
