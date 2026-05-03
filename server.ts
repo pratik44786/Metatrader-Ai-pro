@@ -137,6 +137,18 @@ app.get("/api/ea/orders", (req, res) => {
   res.json({ orders });
 });
 
+app.get("/api/ea/poll", (req, res) => {
+  if (msSinceLastPing() > 5000) state.eaConnected = false;
+  const orders = [...state.orderQueue];
+  state.orderQueue = [];
+  res.json({ orders });
+});
+
+app.get("/api/ea/account", (req, res) => {
+  if (msSinceLastPing() > 5000) state.eaConnected = false;
+  res.json(state);
+});
+
 app.post("/api/ea/result", (req, res) => {
   const data = req.body;
   if (data.success) {
@@ -203,13 +215,6 @@ async function setupVite() {
     
     app.listen(3000, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:3000`);
-    });
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res, next) => {
-      if (req.path.startsWith('/api')) return next();
-      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 }

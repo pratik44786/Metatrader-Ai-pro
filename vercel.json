@@ -11,19 +11,8 @@
       "config": { "distDir": "dist" }
     }
   ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/server.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1",
-      "check": true
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/index.html"
-    }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "server.ts" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
