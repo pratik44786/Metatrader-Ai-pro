@@ -7,49 +7,47 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json());
 
-  app.use(express.json());
+// Global State (In-Memory)
+let state = {
+  balance: 0,
+  equity: 0,
+  margin: 0,
+  freeMargin: 0,
+  login: "",
+  server: "",
+  currency: "USD",
+  leverage: 0,
+  eaConnected: false,
+  lastEAPing: 0,
+  positions: [] as any[],
+  orderQueue: [] as any[],
+  history: [] as any[],
+  autoTradeEnabled: false,
+  selectedSymbol: "EURUSD",
+  selectedTimeframe: "H1",
+  riskPercent: 1.0,
+  lastAnalysis: "Waiting for EA connection...",
+  lastAnalysisSignal: "HOLD",
+  lastAnalysisConfidence: 0,
+  lastAnalysisTime: 0,
+};
 
-  // Global State (In-Memory)
-  let state = {
-    balance: 0,
-    equity: 0,
-    margin: 0,
-    freeMargin: 0,
-    login: "",
-    server: "",
-    currency: "USD",
-    leverage: 0,
-    eaConnected: false,
-    lastEAPing: 0,
-    positions: [] as any[],
-    orderQueue: [] as any[],
-    history: [] as any[],
-    autoTradeEnabled: false,
-    selectedSymbol: "EURUSD",
-    selectedTimeframe: "H1",
-    riskPercent: 1.0,
-    lastAnalysis: "Waiting for first analysis...",
-    lastAnalysisSignal: "HOLD",
-    lastAnalysisConfidence: 0,
-    lastAnalysisTime: 0,
-  };
+// Helper — defined before any usage
+const msSinceLastPing = () => Date.now() - state.lastEAPing;
 
-  // Initialize Gemini
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-  const lastEAPing = () => Date.now() - state.lastEAPing;
+// AI Analysis Engine
+const runAIAnalysis = async () => {
+  if (!state.eaConnected || msSinceLastPing() > 30000) return; 
 
-  // AI Analysis Engine
-  const runAIAnalysis = async () => {
-    if (!state.eaConnected || lastEAPing() > 30000) return; // Only analyze if EA is fresh
-
-    try {
-      const prompt = `
+  try {
+    const prompt = `
 You are an expert forex trading analyst AI.
 
 Account Status:
@@ -71,138 +69,141 @@ Respond in this EXACT JSON format only:
 }
 `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      // Clean potential markdown blocks
-      const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      const data = JSON.parse(cleanJson);
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const data = JSON.parse(cleanJson);
 
-      state.lastAnalysis = data.analysis;
-      state.lastAnalysisSignal = data.signal;
-      state.lastAnalysisConfidence = data.confidence;
-      state.lastAnalysisTime = Date.now();
+    state.lastAnalysis = data.analysis;
+    state.lastAnalysisSignal = data.signal;
+    state.lastAnalysisConfidence = data.confidence;
+    state.lastAnalysisTime = Date.now();
 
-      if (state.autoTradeEnabled && (data.signal === "BUY" || data.signal === "SELL") && data.confidence > 75) {
-        // Simple lot calc: balance * risk / 1000 (rough estimate for 1% risk on standard lots)
-        const calculatedVolume = Math.max(0.01, parseFloat(((state.balance * state.riskPercent / 100) / 100).toFixed(2)));
-        const order = {
-          id: Math.random().toString(36).substring(7),
-          symbol: state.selectedSymbol,
-          action: data.signal.toLowerCase(),
-          volume: calculatedVolume,
-          timestamp: Date.now(),
-          type: "AI_AUTO"
-        };
-        state.orderQueue.push(order);
-        console.log(`[AI AUTO] Queued ${data.signal} for ${state.selectedSymbol} vol:${calculatedVolume}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error("AI Analysis Engine Error:", error);
-      return null;
+    if (state.autoTradeEnabled && (data.signal === "BUY" || data.signal === "SELL") && data.confidence > 75) {
+      const calculatedVolume = Math.max(0.01, parseFloat(((state.balance * state.riskPercent / 100) / 100).toFixed(2)));
+      const order = {
+        id: Math.random().toString(36).substring(7),
+        symbol: state.selectedSymbol,
+        action: data.signal.toLowerCase(),
+        volume: calculatedVolume,
+        timestamp: Date.now(),
+        type: "AI_AUTO"
+      };
+      state.orderQueue.push(order);
+      console.log(`[AI AUTO] Queued ${data.signal} for ${state.selectedSymbol} vol:${calculatedVolume}`);
     }
-  };
 
-  // AI Interval (Every 30 seconds)
-  setInterval(() => {
-    if (state.autoTradeEnabled) runAIAnalysis();
-  }, 30000);
+    return data;
+  } catch (error) {
+    console.error("AI Analysis Engine Error:", error);
+    return null;
+  }
+};
 
-  // --- EA ROUTES ---
+// --- EA ROUTES ---
 
-  app.post("/api/ea/ping", (req, res) => {
-    const data = req.body;
-    state.balance = data.balance;
-    state.equity = data.equity;
-    state.margin = data.margin;
-    state.freeMargin = data.freeMargin;
-    state.login = data.login;
-    state.server = data.server;
-    state.currency = data.currency;
-    state.leverage = data.leverage;
-    state.positions = data.positions || [];
-    state.lastEAPing = Date.now();
-    state.eaConnected = true;
+app.post("/api/ea/ping", async (req, res) => {
+  const data = req.body;
+  state.balance = data.balance || 0;
+  state.equity = data.equity || 0;
+  state.margin = data.margin || 0;
+  state.freeMargin = data.freeMargin || 0;
+  state.login = data.login || "";
+  state.server = data.server || "";
+  state.currency = data.currency || "USD";
+  state.leverage = data.leverage || 0;
+  state.positions = data.positions || [];
+  state.eaConnected = true;
+  state.lastEAPing = Date.now();
 
-    res.json({ 
-      success: true, 
-      autoTradeEnabled: state.autoTradeEnabled,
-      selectedSymbol: state.selectedSymbol,
-      selectedTimeframe: state.selectedTimeframe
+  // Run AI analysis every 30 seconds if auto-trading is enabled, triggered by heartbeat
+  if (state.autoTradeEnabled && (Date.now() - state.lastAnalysisTime > 30000)) {
+    runAIAnalysis().catch(console.error);
+  }
+
+  res.json({ 
+    success: true, 
+    autoTradeEnabled: state.autoTradeEnabled,
+    selectedSymbol: state.selectedSymbol,
+    selectedTimeframe: state.selectedTimeframe
+  });
+});
+
+app.get("/api/ea/orders", (req, res) => {
+  if (msSinceLastPing() > 5000) state.eaConnected = false;
+  const orders = [...state.orderQueue];
+  state.orderQueue = [];
+  res.json({ orders });
+});
+
+app.post("/api/ea/result", (req, res) => {
+  const data = req.body;
+  if (data.success) {
+    state.history.unshift({
+      ...data,
+      timestamp: Date.now()
     });
-  });
+    if (state.history.length > 50) state.history.pop();
+  }
+  state.balance = data.balance || state.balance;
+  state.equity = data.equity || state.equity;
+  res.json({ success: true });
+});
 
-  app.get("/api/ea/orders", (req, res) => {
-    if (lastEAPing() > 5000) state.eaConnected = false;
-    const orders = [...state.orderQueue];
-    state.orderQueue = [];
-    res.json({ orders });
-  });
+// --- FRONTEND ROUTES ---
 
-  app.post("/api/ea/result", (req, res) => {
-    const data = req.body;
-    if (data.success) {
-      state.history.unshift({
-        ...data,
-        timestamp: Date.now()
-      });
-      if (state.history.length > 50) state.history.pop();
-    }
-    state.balance = data.balance || state.balance;
-    state.equity = data.equity || state.equity;
-    res.json({ success: true });
-  });
+app.get("/api/state", (req, res) => {
+  if (msSinceLastPing() > 5000) state.eaConnected = false;
+  res.json(state);
+});
 
-  // --- FRONTEND ROUTES ---
+app.post("/api/autotrade", (req, res) => {
+  state.autoTradeEnabled = req.body.enabled;
+  res.json({ success: true, enabled: state.autoTradeEnabled });
+});
 
-  app.get("/api/state", (req, res) => {
-    if (lastEAPing() > 5000) state.eaConnected = false;
-    res.json(state);
-  });
+app.post("/api/settings", (req, res) => {
+  const { symbol, timeframe, riskPercent } = req.body;
+  if (symbol) state.selectedSymbol = symbol;
+  if (timeframe) state.selectedTimeframe = timeframe;
+  if (riskPercent) state.riskPercent = parseFloat(riskPercent);
+  res.json({ success: true });
+});
 
-  app.post("/api/autotrade", (req, res) => {
-    state.autoTradeEnabled = req.body.enabled;
-    res.json({ success: true, enabled: state.autoTradeEnabled });
-  });
+app.post("/api/analyze", async (req, res) => {
+  const data = await runAIAnalysis();
+  res.json(data ? { ...data, success: true } : { success: false, error: "Analysis failed" });
+});
 
-  app.post("/api/settings", (req, res) => {
-    const { symbol, timeframe, riskPercent } = req.body;
-    if (symbol) state.selectedSymbol = symbol;
-    if (timeframe) state.selectedTimeframe = timeframe;
-    if (riskPercent) state.riskPercent = parseFloat(riskPercent);
-    res.json({ success: true });
-  });
+app.post("/api/trade/manual", (req, res) => {
+  const { symbol, action, volume } = req.body;
+  const order = {
+    id: Math.random().toString(36).substring(7),
+    symbol: symbol || state.selectedSymbol,
+    action: action.toLowerCase(),
+    volume: volume || 0.01,
+    timestamp: Date.now(),
+    type: "MANUAL"
+  };
+  state.orderQueue.push(order);
+  res.json({ success: true, orderId: order.id });
+});
 
-  app.post("/api/analyze", async (req, res) => {
-    const data = await runAIAnalysis();
-    res.json(data ? { ...data, success: true } : { success: false, error: "Analysis failed" });
-  });
+// --- VITE MIDDLEWARE ---
 
-  app.post("/api/trade/manual", (req, res) => {
-    const { symbol, action, volume } = req.body;
-    const order = {
-      id: Math.random().toString(36).substring(7),
-      symbol: symbol || state.selectedSymbol,
-      action: action.toLowerCase(),
-      volume: volume || 0.01,
-      timestamp: Date.now(),
-      type: "MANUAL"
-    };
-    state.orderQueue.push(order);
-    res.json({ success: true, orderId: order.id });
-  });
-
-  // --- VITE MIDDLEWARE ---
-
+async function setupVite() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    
+    app.listen(3000, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:3000`);
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
@@ -211,15 +212,8 @@ Respond in this EXACT JSON format only:
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-
-  if (process.env.NODE_ENV !== "production") {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
-
-  return app;
 }
 
-const appPromise = startServer();
-export default appPromise;
+setupVite();
+
+export default app;
