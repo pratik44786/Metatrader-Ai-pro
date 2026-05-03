@@ -106,15 +106,15 @@ Respond in this EXACT JSON format only:
 
 app.post("/api/ea/ping", async (req, res) => {
   const data = req.body;
-  state.balance = data.balance || 0;
-  state.equity = data.equity || 0;
-  state.margin = data.margin || 0;
-  state.freeMargin = data.freeMargin || 0;
-  state.login = data.login || "";
-  state.server = data.server || "";
-  state.currency = data.currency || "USD";
-  state.leverage = data.leverage || 0;
-  state.positions = data.positions || [];
+  if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
+  if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
+  if (data.margin !== undefined) state.margin = parseFloat(data.margin) || 0;
+  if (data.freeMargin !== undefined) state.freeMargin = parseFloat(data.freeMargin) || 0;
+  if (data.login) state.login = String(data.login);
+  if (data.server) state.server = String(data.server);
+  if (data.currency) state.currency = data.currency;
+  if (data.leverage) state.leverage = parseInt(data.leverage) || 0;
+  if (data.positions) state.positions = data.positions;
   state.eaConnected = true;
   state.lastEAPing = Date.now();
 

@@ -151,10 +151,10 @@ export default function App() {
           <div>
             <span className="font-black text-xl tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-400">MT-AI PRO</span>
             <div className="flex items-center gap-2">
-               <Badge variant="outline" className={`text-[9px] h-4 ${state.eaConnected ? 'border-emerald-500/50 text-emerald-500' : 'border-zinc-700 text-zinc-500'}`}>
-                 {state.eaConnected ? '🟢 EA-LIVE' : '🔴 OFFLINE'}
+               <Badge variant="outline" className={`text-[9px] h-4 ${state.eaConnected ? 'border-emerald-500/50 text-emerald-500' : 'border-zinc-700 text-rose-500'}`}>
+                 {state.eaConnected ? '🟢 EA LIVE' : '🔴 EA Disconnected'}
                </Badge>
-               <span className="text-[9px] text-zinc-600 font-mono">{state.server || 'BROKER_NOT_FOUND'}</span>
+               {state.server && <span className="text-[9px] text-zinc-600 font-mono">{state.server}</span>}
             </div>
           </div>
         </div>
