@@ -28,6 +28,7 @@ let state = {
   eaConnected: false,
   lastEAPing: 0,
   positions: [] as any[],
+  bars: [] as any[],
   orderQueue: [] as any[],
   history: [] as any[],
   autoTradeEnabled: false,
@@ -63,6 +64,9 @@ Account Status:
 ${state.positions.map(p => `  - ${p.symbol} ${p.type} ${p.volume} lots | P&L: $${p.profit}`).join('\n')}
 
 Task: Analyze ${state.selectedSymbol} on ${state.selectedTimeframe} timeframe.
+
+Recent Price Data (Last 50 bars):
+${state.bars.slice(-50).map(b => `${new Date(b.time * 1000).toISOString().slice(11, 16)}: O:${b.open} H:${b.high} L:${b.low} C:${b.close}`).join('\n')}
 
 Respond in this EXACT JSON format only:
 {
@@ -123,6 +127,7 @@ app.post(["/api/ea/ping", "/api/ea/account"], async (req, res) => {
   if (data.currency) state.currency = data.currency;
   if (data.leverage) state.leverage = parseInt(data.leverage) || 0;
   if (data.positions) state.positions = data.positions;
+  if (data.bars) state.bars = data.bars;
   state.eaConnected = true;
   state.lastEAPing = Date.now();
 

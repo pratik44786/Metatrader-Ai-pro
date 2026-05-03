@@ -58,7 +58,7 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
-//| Send Ping with Full Account & Position Data                     |
+//| Send Ping with Full Account, Position & History Data             |
 //+------------------------------------------------------------------+
 bool SendPing()
 {
@@ -67,9 +67,10 @@ bool SendPing()
    string result_headers;
    
    string positions_json = BuildPositionsJSON();
+   string bars_json = BuildBarsJSON(100); // Send last 100 bars
    
    string json = StringFormat(
-      "{\"balance\":%G, \"equity\":%G, \"margin\":%G, \"freeMargin\":%G, \"login\":\"%s\", \"server\":\"%s\", \"currency\":\"%s\", \"leverage\":%lld, \"positions\":%s}",
+      "{\"balance\":%G, \"equity\":%G, \"margin\":%G, \"freeMargin\":%G, \"login\":\"%s\", \"server\":\"%s\", \"currency\":\"%s\", \"leverage\":%lld, \"positions\":%s, \"bars\":%s}",
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
       AccountInfoDouble(ACCOUNT_MARGIN),
@@ -78,7 +79,8 @@ bool SendPing()
       AccountInfoString(ACCOUNT_SERVER),
       AccountInfoString(ACCOUNT_CURRENCY),
       AccountInfoInteger(ACCOUNT_LEVERAGE),
-      positions_json
+      positions_json,
+      bars_json
    );
    
    StringToCharArray(json, post_data);
@@ -95,6 +97,32 @@ bool SendPing()
       Print("❌ Ping Failed. WebRequest Error: ", res, " | GetLastError: ", GetLastError());
       return false;
    }
+}
+
+//+------------------------------------------------------------------+
+//| Build JSON string for bar history                                |
+//+------------------------------------------------------------------+
+string BuildBarsJSON(int count)
+{
+   string json = "[";
+   MqlRates rates[];
+   ArraySetAsSeries(rates, true);
+   int copied = CopyRates(_Symbol, _Period, 0, count, rates);
+   
+   if(copied > 0)
+   {
+      for(int i=copied-1; i>=0; i--)
+      {
+         if(i < copied-1) json += ",";
+         json += StringFormat(
+            "{\"time\":%lld, \"open\":%G, \"high\":%G, \"low\":%G, \"close\":%G, \"vol\":%lld}",
+            rates[i].time, rates[i].open, rates[i].high, rates[i].low, rates[i].close, rates[i].real_volume
+         );
+      }
+   }
+   
+   json += "]";
+   return json;
 }
 
 //+------------------------------------------------------------------+

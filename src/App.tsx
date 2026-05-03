@@ -5,14 +5,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
   Activity, 
   TrendingUp, 
   TrendingDown, 
   Wallet, 
-  History, 
+  History as HistoryIcon, 
   Settings, 
   ArrowUpRight, 
   ArrowDownRight,
@@ -24,7 +24,11 @@ import {
   Info,
   ChevronRight,
   XCircle,
-  Copy
+  BarChart3,
+  Globe,
+  Cpu,
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Badge } from '@/components/ui/badge';
@@ -184,264 +188,361 @@ export default function App() {
         </div>
       </header>
 
-      <main className="p-6 max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="p-6 max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 pb-20">
         {/* LEFT PANEL: Account & Positions */}
         <section className="lg:col-span-4 space-y-6">
-          <Card className="bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
-            <CardHeader className="pb-2 border-b border-zinc-800/50 mb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Live Margins</CardTitle>
-                <Wallet className="h-4 w-4 text-zinc-600" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800">
-                  <p className="text-[9px] text-zinc-500 uppercase font-bold">Used Margin</p>
-                  <p className="text-md font-mono">${state.margin.toLocaleString()}</p>
-                </div>
-                <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800">
-                  <p className="text-[9px] text-zinc-500 uppercase font-bold">Free Margin</p>
-                  <p className="text-md font-mono">${state.freeMargin.toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="relative pt-1">
-                 <div className="flex mb-2 items-center justify-between">
-                   <div>
-                     <span className="text-[10px] font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-400 bg-blue-500/10">
-                       Margin Level
-                     </span>
-                   </div>
-                   <div className="text-right">
-                     <span className="text-[10px] font-semibold inline-block text-blue-400">
-                       {state.margin > 0 ? ((state.equity / state.margin) * 100).toFixed(0) : '100'}%
-                     </span>
-                   </div>
-                 </div>
-                 <div className="overflow-hidden h-1.5 mb-4 text-xs flex rounded bg-zinc-800">
-                   <div style={{ width: `${Math.min(100, state.margin > 0 ? (state.equity / state.margin) * 20 : 100)}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
-                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-zinc-900/50 border-zinc-800 min-h-[300px]">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Open Positions ({state.positions.length})</CardTitle>
-                <Terminal className="h-4 w-4 text-zinc-600" />
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[250px] w-full">
-                {state.positions.length === 0 ? (
-                  <div className="p-10 text-center">
-                    <p className="text-xs text-zinc-600 italic">No open trades on terminal</p>
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Card className="bg-zinc-900/50 border-zinc-800 backdrop-blur-sm shadow-xl">
+              <CardHeader className="pb-2 border-b border-zinc-800/50 mb-4 bg-zinc-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-blue-500" />
+                    <CardTitle className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-black">Capital Summary</CardTitle>
                   </div>
-                ) : (
-                  <div className="divide-y divide-zinc-800/50">
-                    {state.positions.map((p: any) => (
-                      <div key={p.ticket} className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-colors">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold">{p.symbol}</span>
-                            <Badge className={p.type === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}>
-                              {p.type} {p.volume}
-                            </Badge>
-                          </div>
-                          <p className="text-[9px] text-zinc-500">Entry: {p.openPrice.toFixed(5)} → {p.currentPrice.toFixed(5)}</p>
-                        </div>
-                        <div className="text-right flex items-center gap-3">
-                          <p className={`text-sm font-mono font-bold ${p.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}
-                          </p>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-7 w-7 text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10"
-                            onClick={() => placeManualTrade('close', p.symbol)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
+                  <Lock className="h-3 w-3 text-zinc-700" />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-4 bg-zinc-950/60 rounded-2xl border border-zinc-800/50 group hover:border-blue-500/30 transition-all">
+                    <p className="text-[10px] text-zinc-600 uppercase font-bold mb-1">Margin Used</p>
+                    <p className="text-xl font-black font-mono tracking-tighter text-zinc-200">${state.margin.toLocaleString()}</p>
+                  </div>
+                  <div className="p-4 bg-zinc-950/60 rounded-2xl border border-zinc-800/50 group hover:border-emerald-500/30 transition-all">
+                    <p className="text-[10px] text-zinc-600 uppercase font-bold mb-1">Available</p>
+                    <p className="text-xl font-black font-mono tracking-tighter text-emerald-500">${state.freeMargin.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="p-4 bg-zinc-950/40 rounded-2xl border border-zinc-800/30">
+                  <div className="flex mb-3 items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Safety Margin Level</span>
+                    <span className={`text-[10px] font-black p-1 rounded ${state.margin > 0 && (state.equity / state.margin) < 2 ? 'bg-rose-500/20 text-rose-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      {state.margin > 0 ? ((state.equity / state.margin) * 100).toFixed(0) : '100'}%
+                    </span>
+                  </div>
+                  <div className="overflow-hidden h-2 flex rounded-full bg-zinc-800 shadow-inner">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, state.margin > 0 ? (state.equity / state.margin) * 5 : 100)}%` }}
+                      className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center ${state.margin > 0 && (state.equity / state.margin) < 2 ? 'bg-rose-500' : 'bg-blue-600'}`}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            <Card className="bg-zinc-900/50 border-zinc-800 shadow-xl overflow-hidden">
+              <CardHeader className="pb-3 border-b border-zinc-800/50 bg-zinc-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-emerald-500" />
+                    <CardTitle className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-black">Active Terminal ({state.positions.length})</CardTitle>
+                  </div>
+                  <RefreshCw className={`h-3 w-3 text-zinc-600 ${state.eaConnected ? 'animate-spin-slow' : ''}`} />
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[300px] w-full">
+                  {state.positions.length === 0 ? (
+                    <div className="py-20 text-center px-6">
+                      <div className="w-12 h-12 bg-zinc-800/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-700/50">
+                         <BarChart3 className="h-5 w-5 text-zinc-600" />
                       </div>
-                    ))}
+                      <p className="text-xs text-zinc-500 font-medium">Scanning for open liquidity...</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-zinc-800/30">
+                      {state.positions.map((p: any) => (
+                        <div key={p.ticket} className="p-4 flex items-center justify-between group hover:bg-zinc-800/20 transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-1 h-8 rounded-full ${p.type === 'BUY' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black tracking-tighter">{p.symbol}</span>
+                                <Badge variant="outline" className={`text-[9px] h-4 font-black ${p.type === 'BUY' ? 'border-emerald-500/20 text-emerald-500 bg-emerald-500/5' : 'border-rose-500/20 text-rose-500 bg-rose-500/5'}`}>
+                                  {p.type} {p.volume}
+                                </Badge>
+                              </div>
+                              <p className="text-[10px] text-zinc-600 font-mono mt-0.5">#{p.ticket} • {p.openPrice.toFixed(5)}</p>
+                            </div>
+                          </div>
+                          <div className="text-right flex items-center gap-4">
+                            <div className="flex flex-col items-end">
+                              <p className={`text-sm font-black font-mono tracking-tighter ${p.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}
+                              </p>
+                              <div className="flex items-center gap-1">
+                                {p.profit >= 0 ? <TrendingUp className="h-3 w-3 text-emerald-600" /> : <TrendingDown className="h-3 w-3 text-rose-600" />}
+                                <span className="text-[9px] text-zinc-600 font-bold">{((p.profit / state.balance) * 100).toFixed(2)}%</span>
+                              </div>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 rounded-xl opacity-0 group-hover:opacity-100 transition-all text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10"
+                              onClick={() => placeManualTrade('close', p.symbol)}
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                <div className="p-5 border-t border-zinc-800 bg-zinc-950/50 flex justify-between items-center">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest leading-tight">Total Unbalanced</span>
+                    <span className="text-[9px] text-zinc-600 font-bold uppercase">Exposure Risk: {(state.positions.reduce((acc: any, p: any) => acc + p.volume, 0) * 100000 / state.balance).toFixed(1)}x</span>
                   </div>
-                )}
-              </ScrollArea>
-              <div className="p-4 border-t border-zinc-800 bg-zinc-950/30 flex justify-between items-center">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Total Running P/L</span>
-                <span className={`text-sm font-black ${state.equity >= state.balance ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  ${(state.equity - state.balance).toFixed(2)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-zinc-900/50 border-zinc-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Recent History</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-               <ScrollArea className="h-[200px]">
-                 {state.history.map((h: any, i: number) => (
-                   <div key={i} className="p-3 border-b border-zinc-800/50 flex justify-between items-center text-[11px]">
-                     <div className="flex gap-2 items-center">
-                        <span className="font-bold">{h.symbol}</span>
-                        <span className={h.status === 'FILLED' ? 'text-emerald-500' : 'text-rose-500'}>{h.status}</span>
-                     </div>
-                     <span className="text-zinc-500 font-mono">{new Date(h.timestamp).toLocaleTimeString()}</span>
-                   </div>
-                 ))}
-               </ScrollArea>
-            </CardContent>
-          </Card>
+                  <span className={`text-2xl font-black font-mono tracking-tighter ${state.equity >= state.balance ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {state.equity >= state.balance ? '+' : ''}${(state.equity - state.balance).toFixed(2)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         </section>
 
         {/* RIGHT PANEL: AI Analysis & Controls */}
         <section className="lg:col-span-8 space-y-6">
-          <div className="flex flex-wrap gap-4 items-center bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-wrap gap-4 items-center bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800 backdrop-blur-md shadow-2xl shadow-blue-900/5"
+          >
              <div className="flex flex-col gap-1.5 min-w-[140px]">
-               <Label className="text-[10px] text-zinc-500 uppercase font-black ml-1">Asset</Label>
+               <Label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] ml-1">Asset Target</Label>
                <Select value={state.selectedSymbol} onValueChange={(v) => updateSettings('symbol', v)}>
-                  <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs">
+                  <SelectTrigger className="bg-zinc-950 border-zinc-700/50 h-10 text-xs font-black rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
+                  <SelectContent className="bg-zinc-900 border-zinc-800 text-white rounded-xl">
                     {SYMBOLS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                </Select>
              </div>
              <div className="flex flex-col gap-1.5 min-w-[100px]">
-               <Label className="text-[10px] text-zinc-500 uppercase font-black ml-1">Timeframe</Label>
+               <Label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] ml-1">Temporal Scope</Label>
                <Select value={state.selectedTimeframe} onValueChange={(v) => updateSettings('timeframe', v)}>
-                  <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs">
+                  <SelectTrigger className="bg-zinc-950 border-zinc-700/50 h-10 text-xs font-black rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
+                  <SelectContent className="bg-zinc-900 border-zinc-800 text-white rounded-xl">
                     {TIMEFRAMES.map(tf => <SelectItem key={tf} value={tf}>{tf}</SelectItem>)}
                   </SelectContent>
                </Select>
              </div>
              <div className="flex flex-col gap-1.5 min-w-[80px]">
-               <Label className="text-[10px] text-zinc-500 uppercase font-black ml-1">Risk %</Label>
+               <Label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] ml-1">Risk Unit %</Label>
                <Input 
                  type="number" 
+                 step="0.1"
                  value={state.riskPercent} 
                  onChange={(e) => updateSettings('riskPercent', e.target.value)}
-                 className="bg-zinc-950 border-zinc-800 h-9 text-xs" 
+                 className="bg-zinc-950 border-zinc-700/50 h-10 text-xs font-mono font-black rounded-xl" 
                />
              </div>
              <div className="flex-1" />
              <Button 
                onClick={runAnalysis} 
                disabled={isAnalyzing || !state.eaConnected}
-               className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 px-6 rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-900/20"
+               className="bg-zinc-100 hover:bg-white text-black font-black h-11 px-8 rounded-2xl transition-all active:scale-95 shadow-xl shadow-zinc-400/5 gap-2 group"
               >
                {isAnalyzing ? (
                  <div className="flex gap-1">
-                   <div className="w-1 h-1 bg-white rounded-full animate-bounce" />
-                   <div className="w-1 h-1 bg-white rounded-full animate-bounce [animation-delay:-0.1s]" />
-                   <div className="w-1 h-1 bg-white rounded-full animate-bounce [animation-delay:-0.2s]" />
+                   <div className="w-1.5 h-1.5 bg-black rounded-full animate-bounce" />
+                   <div className="w-1.5 h-1.5 bg-black rounded-full animate-bounce [animation-delay:-0.1s]" />
+                   <div className="w-1.5 h-1.5 bg-black rounded-full animate-bounce [animation-delay:-0.2s]" />
                  </div>
                ) : (
-                 <>Run Intelligence Analysis</>
+                 <>
+                  <Brain className="h-4 w-4 transition-transform group-hover:rotate-12" />
+                  INITIATE AI SCAN
+                 </>
                )}
              </Button>
-          </div>
+          </motion.div>
 
-          <Card className="bg-zinc-900/50 border-zinc-800 relative overflow-hidden">
-            <div className={`absolute top-0 left-0 w-1 h-full ${state.lastAnalysisSignal === 'BUY' ? 'bg-emerald-500' : state.lastAnalysisSignal === 'SELL' ? 'bg-rose-500' : 'bg-zinc-700'}`} />
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner ${
-                  state.lastAnalysisSignal === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 
-                  state.lastAnalysisSignal === 'SELL' ? 'bg-rose-500/10 text-rose-500' : 
-                  'bg-zinc-800 text-zinc-500'
-                }`}>
-                  {state.lastAnalysisSignal || '---'}
-                </div>
-                <div>
-                   <h2 className="font-black text-lg">AI Execution Signal</h2>
-                   <div className="flex items-center gap-2">
-                     <span className="text-[10px] text-zinc-500 uppercase font-bold">{state.selectedSymbol} :: {state.selectedTimeframe}</span>
-                     <span className="text-[10px] text-zinc-600 italic">• Updated {state.lastAnalysisTime ? new Date(state.lastAnalysisTime).toLocaleTimeString() : 'Never'}</span>
-                   </div>
-                </div>
+          {/* MARKET CHART SECTION */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <Card className="bg-zinc-900/50 border-zinc-800 overflow-hidden shadow-2xl h-[350px] relative">
+              <div className="absolute top-4 left-6 z-10 flex items-center gap-3">
+                 <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-950/80 rounded-xl border border-zinc-800/50 backdrop-blur-md">
+                    <Globe className="h-3 w-3 text-blue-500" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">{state.selectedSymbol} Market Pulse</span>
+                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-zinc-500 uppercase font-black">Confidence</p>
-                <p className="text-2xl font-black text-blue-400">{state.lastAnalysisConfidence}%</p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="p-5 bg-zinc-950 rounded-2xl border border-zinc-800">
-                <p className="text-sm leading-relaxed text-zinc-300 italic opacity-90">
-                  "{state.lastAnalysis}"
-                </p>
-              </div>
+              <CardContent className="p-0 h-full w-full pt-16">
+                 {state.bars && state.bars.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={state.bars}>
+                        <defs>
+                          <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#18181b" />
+                        <XAxis 
+                           dataKey="time" 
+                           hide
+                        />
+                        <YAxis 
+                          domain={['auto', 'auto']} 
+                          orientation="right" 
+                          tick={{ fontSize: 9, fill: '#52525b', fontWeight: 'bold' }} 
+                          axisLine={false}
+                          tickLine={false}
+                          width={60}
+                        />
+                        <Tooltip 
+                           contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px' }}
+                           itemStyle={{ fontSize: '10px', fontWeight: 'bold' }}
+                           labelStyle={{ display: 'none' }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="close" 
+                          stroke="#3b82f6" 
+                          strokeWidth={3}
+                          fillOpacity={1} 
+                          fill="url(#colorPrice)" 
+                          animationDuration={1500}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                 ) : (
+                    <div className="h-full flex flex-col items-center justify-center gap-4">
+                       <RefreshCw className="h-8 w-8 text-zinc-800 animate-spin-slow" />
+                       <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em]">Synching Real-Time Data Stream</p>
+                    </div>
+                 )}
+              </CardContent>
+            </Card>
+          </motion.div>
 
-              {state.autoTradeEnabled && (
-                <div className="flex items-center gap-3 p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl">
-                  <div className="p-1.5 bg-blue-500/10 rounded-lg">
-                    <ShieldCheck className="h-4 w-4 text-blue-400" />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <Card className="bg-zinc-900/50 border-zinc-800 relative overflow-hidden shadow-2xl">
+              <div className={`absolute top-0 left-0 w-1.5 h-full ${state.lastAnalysisSignal === 'BUY' ? 'bg-emerald-500' : state.lastAnalysisSignal === 'SELL' ? 'bg-rose-500' : 'bg-zinc-700'}`} />
+              <CardHeader className="flex flex-row items-center justify-between pb-6 border-b border-zinc-800/30">
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner border ${
+                    state.lastAnalysisSignal === 'BUY' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 
+                    state.lastAnalysisSignal === 'SELL' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 
+                    'bg-zinc-800/50 text-zinc-500 border-zinc-700/50'
+                  }`}>
+                    {state.lastAnalysisSignal || '...'}
                   </div>
-                  <p className="text-[11px] text-blue-400 font-bold">AUTO-TRADING ACTIVE: The agent will automatically fire orders when confidence {'>'} 75%.</p>
+                  <div>
+                    <h2 className="font-black text-xl tracking-tight">Intelligence Consensus</h2>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Cpu className="h-3 w-3 text-zinc-600" />
+                        <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">{state.selectedSymbol} ANALYTICS</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-600 font-bold">• STAMP: {state.lastAnalysisTime ? new Date(state.lastAnalysisTime).toLocaleTimeString() : 'PENDING'}</span>
+                    </div>
+                  </div>
                 </div>
-              )}
+                <div className="text-right">
+                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Signal Confidence</p>
+                  <p className="text-3xl font-black text-blue-500 drop-shadow-lg shadow-blue-500/20">{state.lastAnalysisConfidence}<span className="text-sm ml-1">%</span></p>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6 pt-6">
+                <div className="p-6 bg-zinc-950/80 rounded-3xl border border-zinc-800/50 shadow-inner group">
+                  <p className="text-[13px] leading-relaxed text-zinc-400 font-medium group-hover:text-zinc-200 transition-colors">
+                    <span className="text-blue-500 font-black mr-2">ANALYSIS:</span>
+                    {state.lastAnalysis}
+                  </p>
+                </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
-                   <p className="text-[10px] text-zinc-500 uppercase font-black mb-3">Execute Instant BUY</p>
-                   <div className="flex gap-2">
-                     <Input 
+                <AnimatePresence>
+                  {state.autoTradeEnabled && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-4 p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl overflow-hidden shadow-lg shadow-blue-900/5"
+                    >
+                      <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center shrink-0">
+                        <ShieldCheck className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-blue-400 font-black uppercase tracking-widest">Autonomous Protocol Engaged</p>
+                        <p className="text-[10px] text-blue-400/70 font-medium">The system is monitoring for confidence thresholds exceeding 75% for auto-execution.</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-5 bg-zinc-950 rounded-3xl border border-zinc-800/80 group hover:border-emerald-500/30 transition-all">
+                    <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-4 flex items-center gap-2">
+                       <Zap className="h-3 w-3 text-emerald-500" />
+                       Direct Liquidity BUY
+                    </p>
+                    <div className="flex gap-3">
+                      <Input 
                         type="number" 
+                        step="0.01"
                         value={manualVolume} 
                         onChange={(e) => setManualVolume(e.target.value)}
-                        className="bg-zinc-900 border-zinc-800 h-10 font-mono text-xs" 
+                        className="bg-zinc-900 border-zinc-800 h-11 font-black font-mono text-sm rounded-xl focus-visible:ring-emerald-500/50" 
                       />
-                     <Button 
-                       onClick={() => placeManualTrade('buy')} 
-                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 grow"
-                     >
-                       BUY
-                     </Button>
-                   </div>
-                </div>
-                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
-                   <p className="text-[10px] text-zinc-500 uppercase font-black mb-3">Execute Instant SELL</p>
-                   <div className="flex gap-2">
-                     <Input 
-                        type="number" 
-                        value={manualVolume} 
-                        onChange={(e) => setManualVolume(e.target.value)}
-                        className="bg-zinc-900 border-zinc-800 h-10 font-mono text-xs" 
-                      />
-                     <Button 
-                        onClick={() => placeManualTrade('sell')} 
-                        className="bg-rose-600 hover:bg-rose-700 text-white font-bold h-10 grow"
+                      <Button 
+                        onClick={() => placeManualTrade('buy')} 
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-black h-11 px-8 rounded-xl shadow-lg shadow-emerald-900/20 active:scale-95 transition-all"
                       >
-                        SELL
-                     </Button>
-                   </div>
+                        LONG
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-5 bg-zinc-950 rounded-3xl border border-zinc-800/80 group hover:border-rose-500/30 transition-all">
+                    <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-4 flex items-center gap-2">
+                       <Zap className="h-3 w-3 text-rose-500" />
+                       Direct Liquidity SELL
+                    </p>
+                    <div className="flex gap-3">
+                      <Input 
+                        type="number" 
+                        step="0.01"
+                        value={manualVolume} 
+                        onChange={(e) => setManualVolume(e.target.value)}
+                        className="bg-zinc-900 border-zinc-800 h-11 font-black font-mono text-sm rounded-xl focus-visible:ring-rose-500/50" 
+                      />
+                      <Button 
+                        onClick={() => placeManualTrade('sell')} 
+                        className="bg-rose-600 hover:bg-rose-500 text-white font-black h-11 px-8 rounded-xl shadow-lg shadow-rose-900/20 active:scale-95 transition-all"
+                      >
+                        SHORT
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-zinc-900/50 border-zinc-800 border-dashed">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-zinc-800 rounded-lg">
-                  <Terminal className="h-4 w-4 text-zinc-500" />
-                </div>
-                <p className="text-xs text-zinc-400 font-medium">Pending Reverse-Bridge Orders:</p>
-              </div>
-              <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 font-mono border-blue-500/20">
-                {state.orderQueue.length} WAITING
-              </Badge>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </motion.div>
         </section>
       </main>
 
