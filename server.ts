@@ -117,7 +117,6 @@ app.post("/api/ea/ping", async (req, res) => {
   state.eaConnected = true;
   state.lastEAPing = Date.now();
 
-  // Run AI analysis every 30 seconds if auto-trading is enabled, triggered by heartbeat
   if (state.autoTradeEnabled && (Date.now() - state.lastAnalysisTime > 30000)) {
     runAIAnalysis().catch(console.error);
   }
@@ -128,6 +127,16 @@ app.post("/api/ea/ping", async (req, res) => {
     selectedSymbol: state.selectedSymbol,
     selectedTimeframe: state.selectedTimeframe
   });
+});
+
+// Alias for older EA versions or different naming conventions
+app.post("/api/ea/account", async (req, res) => {
+  const data = req.body;
+  if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
+  if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
+  state.eaConnected = true;
+  state.lastEAPing = Date.now();
+  res.json({ success: true });
 });
 
 app.get("/api/ea/orders", (req, res) => {
@@ -142,11 +151,6 @@ app.get("/api/ea/poll", (req, res) => {
   const orders = [...state.orderQueue];
   state.orderQueue = [];
   res.json({ orders });
-});
-
-app.get("/api/ea/account", (req, res) => {
-  if (msSinceLastPing() > 5000) state.eaConnected = false;
-  res.json(state);
 });
 
 app.post("/api/ea/result", (req, res) => {
