@@ -169,9 +169,9 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
       setIsMcpConnecting(false);
       queryClient.invalidateQueries({ queryKey: ['account'] });
       if (data.success) {
-        toast.success("MCP Bridge Active: Linked to MT5 Terminal");
+        toast.success("MCP Bridge Active: Linked to Agent Gateway");
       } else {
-        toast.error("MCP Connection Failed: Terminal Unreachable");
+        toast.error(data.message || "MCP Connection Failed");
       }
     },
     onError: () => {
@@ -202,7 +202,7 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
                 id="mcp-url" 
                 value={mcpUrl}
                 onChange={(e) => setMcpUrl(e.target.value)}
-                placeholder="http://localhost:8000" 
+                placeholder="https://your-ngrok-url.app" 
                 className="bg-zinc-800 border-zinc-700 h-9 text-xs flex-1" 
               />
               <Button 
@@ -213,7 +213,11 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
                 {isMcpConnecting ? <Activity className="h-4 w-4 animate-spin" /> : "Link"}
               </Button>
             </div>
-            <p className="text-[10px] text-zinc-500 italic">Example: http://YOUR_PC_IP:8000 or ngrok URL</p>
+            <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-md mt-2">
+              <p className="text-[9px] text-blue-400 leading-tight">
+                <strong>NOTE:</strong> If running on your local PC, you MUST use an <strong>ngrok</strong> tunnel or public IP. "localhost" will not work from the cloud.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

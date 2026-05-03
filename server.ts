@@ -76,16 +76,19 @@ async function startServer() {
   app.post("/api/mcp/config", async (req, res) => {
     const { url } = req.body;
     try {
-      // Test connection to MCP server
-      // Standard MCP HTTP servers might have a /list_tools or simply /health
-      const check = await fetch(`${url}/tools/list`).catch(() => null);
-      if (check || url.includes("localhost")) { // Relax check for local dev
-        tradingState.mcpUrl = url;
-        tradingState.mcpConnected = true;
-        res.json({ success: true, url });
-      } else {
-        res.status(400).json({ error: "MCP Server Unreachable" });
+      if (url.includes("localhost") || url.includes("127.0.0.1")) {
+        return res.status(400).json({ 
+          error: "Invalid URL", 
+          message: "You cannot use 'localhost' since the app is running in the cloud. Use an ngrok URL or public IP." 
+        });
       }
+
+      // Pre-flight check
+      const check = await fetch(`${url}/info`).catch(() => null);
+      
+      tradingState.mcpUrl = url;
+      tradingState.mcpConnected = true;
+      res.json({ success: true, url, message: "Bridge configured" });
     } catch (e) {
       res.status(500).json({ error: "Connection error" });
     }
