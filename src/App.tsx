@@ -410,7 +410,7 @@ export default function App() {
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-zinc-800 rounded-lg">
-                  <terminal className="h-4 w-4 text-zinc-500" />
+                  <Terminal className="h-4 w-4 text-zinc-500" />
                 </div>
                 <p className="text-xs text-zinc-400 font-medium">Pending Reverse-Bridge Orders:</p>
               </div>
