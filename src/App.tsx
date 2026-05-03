@@ -190,7 +190,7 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
             </div>
             <div>
               <CardTitle className="text-sm">MCP AI Bridge</CardTitle>
-              <CardDescription className="text-[10px]">Connect to metatrader-mcp-server running on your PC.</CardDescription>
+              <CardDescription className="text-[10px]">Connect to metatrader-mcp-server running on your VPS/PC.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -213,13 +213,36 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
                 {isMcpConnecting ? <Activity className="h-4 w-4 animate-spin" /> : "Link"}
               </Button>
             </div>
-            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg mt-2">
-              <p className="text-[10px] text-blue-400 font-bold mb-1 underline">MOBLE USER GUIDE:</p>
-              <p className="text-[9px] text-blue-300 leading-tight">
-                Since you don't have a PC, you need a <strong>Windows VPS</strong> to run the MT5 Terminal & MCP Bridge 24/7. Use the "RD Client" app on your phone to manage your VPS.
-              </p>
-              <Button variant="link" className="text-[9px] h-auto p-0 text-blue-200 mt-1">View VPS Setup Steps →</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900 border-zinc-800 text-white">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-orange-600 rounded-md">
+              <Server className="h-4 w-4" />
             </div>
+            <div>
+              <CardTitle className="text-sm">VPS Setup Guide (Mobile)</CardTitle>
+              <CardDescription className="text-[10px]">Steps to link your VPS account.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 space-y-2">
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-3">
+             <div className="flex gap-3">
+               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">1</div>
+               <p className="text-[10px] text-zinc-400 leading-tight">Log into your VPS using <strong>RD Client</strong> on your phone.</p>
+             </div>
+             <div className="flex gap-3">
+               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">2</div>
+               <p className="text-[10px] text-zinc-400 leading-tight">Install <strong>Node.js</strong> and run: <code className="bg-zinc-900 px-1 text-blue-400 font-mono">npx metatrader-mcp-server</code></p>
+             </div>
+             <div className="flex gap-3">
+               <div className="flex-shrink-0 w-5 h-5 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold text-zinc-400">3</div>
+               <p className="text-[10px] text-zinc-400 leading-tight">Enter your VPS Public IP (or ngrok URL) in the <strong>MCP AI Bridge</strong> section above.</p>
+             </div>
           </div>
         </CardContent>
       </Card>
