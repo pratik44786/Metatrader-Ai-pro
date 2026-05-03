@@ -47,8 +47,32 @@ import { toast } from 'sonner';
 const SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD', 'NAS100', 'US30'];
 const TIMEFRAMES = ['M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 
+const INITIAL_STATE = {
+  balance: 0,
+  equity: 0,
+  margin: 0,
+  freeMargin: 0,
+  login: "",
+  server: "",
+  currency: "USD",
+  leverage: 0,
+  eaConnected: false,
+  lastEAPing: 0,
+  positions: [],
+  orderQueue: [],
+  history: [],
+  autoTradeEnabled: false,
+  selectedSymbol: "EURUSD",
+  selectedTimeframe: "H1",
+  riskPercent: 1.0,
+  lastAnalysis: "Waiting for intelligence...",
+  lastAnalysisSignal: "HOLD",
+  lastAnalysisConfidence: 0,
+  lastAnalysisTime: 0,
+};
+
 export default function App() {
-  const [state, setState] = useState<any>(null);
+  const [state, setState] = useState<any>(INITIAL_STATE);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [manualVolume, setManualVolume] = useState('0.01');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -116,8 +140,6 @@ export default function App() {
       toast.success(`${action.toUpperCase()} manually queued for MT5`);
     }
   };
-
-  if (!state) return <div className="h-screen flex items-center justify-center bg-black text-white">Initializing Engine...</div>;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-blue-500/30">
