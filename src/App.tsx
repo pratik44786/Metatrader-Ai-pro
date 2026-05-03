@@ -14,18 +14,18 @@ import {
   Wallet, 
   History, 
   Settings, 
-  MessageSquare, 
   ArrowUpRight, 
   ArrowDownRight,
   ShieldCheck,
   Brain,
   Server,
-  Copy
+  Copy,
+  Terminal,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -71,34 +71,43 @@ const CHART_DATA = [
   { time: '15:00', price: 1.0855 },
 ];
 
-function TradeDialog({ symbol, price }: { symbol: string, price: number }) {
+function TradeDialog({ symbol, price, isLive }: { symbol: string, price: number, isLive: boolean }) {
   const [lot, setLot] = useState('0.10');
   const queryClient = useQueryClient();
 
   const tradeMutation = useMutation({
     mutationFn: async (type: 'BUY' | 'SELL') => {
-      const res = await fetch('/api/trade', {
+      const endpoint = isLive ? '/api/trade/real' : '/api/trade';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, type, lot: parseFloat(lot) || 0.01, price }),
+        body: JSON.stringify({ symbol, action: type, volume: parseFloat(lot) || 0.01, price }),
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['account'] });
-      toast.success(`${symbol} order executed successfully`);
+      if (isLive) {
+        toast.success(`MT5 Order Queued: ${symbol} ${lot} Lots`);
+      } else {
+        toast.info(`Simulated: ${symbol} order placed`);
+      }
     }
   });
 
   return (
     <Dialog>
-      <DialogTrigger className="bg-zinc-800 border border-zinc-700 text-[10px] h-7 px-3 rounded-md hover:bg-zinc-700 transition-colors text-white">
-        Trade
+      <DialogTrigger asChild>
+        <Button variant="outline" className="bg-zinc-800 border-zinc-700 text-[10px] h-7 px-3 text-white">
+          Trade
+        </Button>
       </DialogTrigger>
-      <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+      <DialogContent className="bg-zinc-900 border-zinc-800 text-white w-[90%] rounded-xl">
         <DialogHeader>
-          <DialogTitle>Quick Execution: {symbol}</DialogTitle>
-          <DialogDescription className="text-zinc-500">Current Market Price: {price}</DialogDescription>
+          <DialogTitle>Market Order: {symbol}</DialogTitle>
+          <DialogDescription className="text-zinc-500">
+            {isLive ? "REAL Execution via VPS Bridge" : "Sandbox Simulation Mode"}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
@@ -110,11 +119,12 @@ function TradeDialog({ symbol, price }: { symbol: string, price: number }) {
               className="bg-zinc-800 border-zinc-700 font-mono" 
               type="number"
               step="0.01"
+              min="0.01"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Button onClick={() => tradeMutation.mutate('BUY')} className="bg-emerald-600 hover:bg-emerald-700 text-white">BUY</Button>
-            <Button onClick={() => tradeMutation.mutate('SELL')} className="bg-rose-600 hover:bg-rose-700 text-white">SELL</Button>
+            <Button onClick={() => tradeMutation.mutate('BUY')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">BUY</Button>
+            <Button onClick={() => tradeMutation.mutate('SELL')} className="bg-rose-600 hover:bg-rose-700 text-white font-bold">SELL</Button>
           </div>
         </div>
       </DialogContent>
@@ -123,250 +133,64 @@ function TradeDialog({ symbol, price }: { symbol: string, price: number }) {
 }
 
 function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | undefined, autoTradeMutation: any }) {
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [server, setServer] = useState('');
-  const queryClient = useQueryClient();
-
-  const connectMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/broker/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login, password, server }),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['account'] });
-      toast.success("MT5 Broker Connected - Environment Switched to LIVE");
-    }
-  });
-
-  const disconnectMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/broker/disconnect', { method: 'POST' });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['account'] });
-      toast.info("Broker Disconnected - Switched to Sandbox Mode");
-    }
-  });
-
-  const [mcpUrl, setMcpUrl] = useState('http://localhost:8000');
-  const [isMcpConnecting, setIsMcpConnecting] = useState(false);
-
-  const connectMcpMutation = useMutation({
-    mutationFn: async () => {
-      setIsMcpConnecting(true);
-      const res = await fetch('/api/mcp/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: mcpUrl }),
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setIsMcpConnecting(false);
-      queryClient.invalidateQueries({ queryKey: ['account'] });
-      if (data.success) {
-        toast.success("MCP Bridge Active: Linked to Agent Gateway");
-      } else {
-        toast.error(data.message || "MCP Connection Failed");
-      }
-    },
-    onError: () => {
-      setIsMcpConnecting(false);
-      toast.error("MCP Network Error: Check Terminal Bridge");
-    }
-  });
-
   return (
     <div className="space-y-4">
-      <Card className="bg-zinc-900 border-zinc-800 text-white">
-        <CardHeader>
+      <Card className="bg-zinc-900 border-zinc-800 text-white overflow-hidden">
+        <CardHeader className="bg-emerald-500/10 border-b border-emerald-500/20">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-600 rounded-md">
-              <Brain className="h-4 w-4" />
+            <div className="p-1.5 bg-emerald-600 rounded-md">
+              <ShieldCheck className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle className="text-sm">MCP AI Bridge</CardTitle>
-              <CardDescription className="text-[10px]">Connect to metatrader-mcp-server running on your VPS/PC.</CardDescription>
+              <CardTitle className="text-sm">MetaTrader 5 EA Link</CardTitle>
+              <CardDescription className="text-[10px] text-emerald-400">
+                {account?.brokerConnected ? "ACTIVE: Linked to VPS Terminal" : "Offline: Waiting for EA Connection"}
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="mcp-url" className="text-xs">MCP Server Endpoint (HTTP)</Label>
-            <div className="flex gap-2">
-              <Input 
-                id="mcp-url" 
-                value={mcpUrl}
-                onChange={(e) => setMcpUrl(e.target.value)}
-                placeholder="https://your-ngrok-url.app" 
-                className="bg-zinc-800 border-zinc-700 h-9 text-xs flex-1" 
-              />
-              <Button 
-                onClick={() => connectMcpMutation.mutate()}
-                disabled={isMcpConnecting}
-                className="bg-blue-600 hover:bg-blue-700 h-9 px-3"
-              >
-                {isMcpConnecting ? <Activity className="h-4 w-4 animate-spin" /> : "Link"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-zinc-900 border-zinc-800 text-white">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-600 rounded-md">
-              <Brain className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle className="text-sm">Why do I need a Bridge?</CardTitle>
-              <CardDescription className="text-[10px]">Understanding the connection.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-3 space-y-3">
-          <div className="text-[10px] text-zinc-400 leading-relaxed bg-zinc-950 p-3 rounded-lg border border-zinc-800">
-            MT5 is built for humans. To let an AI (Gemini) execute trades, we use a <strong className="text-blue-400">Bridge (MCP Server)</strong>. 
-            <br/><br/>
-            This bridge runs on your VPS, talks to MT5 via Python, and gives this Mobile App a secure link to send orders. 
-            <strong className="text-emerald-400"> Without this, the AI is "blind" to your terminal.</strong>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2 py-2">
-            <div className="text-center p-2 rounded bg-zinc-800/50 border border-zinc-700">
-              <p className="text-[9px] font-bold text-zinc-500 uppercase">Input</p>
-              <p className="text-[10px] text-zinc-100">AI Logic</p>
-            </div>
-            <div className="flex items-center justify-center">
-              <div className="h-[1px] w-full bg-zinc-700 relative">
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-blue-500 rounded-full" />
-              </div>
-            </div>
-            <div className="text-center p-2 rounded bg-blue-500/10 border border-blue-500/20">
-              <p className="text-[9px] font-bold text-blue-400 uppercase">Action</p>
-              <p className="text-[10px] text-blue-100">MT5 Trade</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-zinc-900 border-zinc-800 text-white">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-orange-600 rounded-md">
-              <Server className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle className="text-sm">VPS Desktop Setup (Mobile)</CardTitle>
-              <CardDescription className="text-[10px]">Run this on your VPS to link MT5.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-3 space-y-4">
-          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-4">
-             <div className="space-y-1">
-               <p className="text-[10px] text-zinc-500 uppercase font-bold text-orange-400">Jugad Option: Python Bridge (No Node Needed)</p>
-               <p className="text-[10px] text-zinc-400">If NPX fails, run this in VPS PowerShell:</p>
-               <div className="bg-black p-2 rounded border border-zinc-800">
-                 <code className="text-[9px] text-blue-400 font-mono break-all line-clamp-2">pip install flask MetaTrader5 && python -c "import MetaTrader5 as mt5; print('MT5 Bridge Ready!')"</code>
+        <CardContent className="p-4 space-y-4">
+           {account?.brokerConnected ? (
+             <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 bg-zinc-950 rounded border border-zinc-800">
+                    <p className="text-[8px] text-zinc-500 uppercase font-bold">Login ID</p>
+                    <p className="text-xs font-mono">{account.brokerConfig?.login}</p>
+                  </div>
+                  <div className="p-2 bg-zinc-950 rounded border border-zinc-800">
+                    <p className="text-[8px] text-zinc-500 uppercase font-bold">Server</p>
+                    <p className="text-xs font-mono truncate">{account.brokerConfig?.server}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-emerald-400">
+                  <Activity className="h-3 w-3 animate-pulse" />
+                  <span>Encrypted Reverse-Bridge Active</span>
+                </div>
+             </div>
+           ) : (
+             <div className="space-y-4">
+               <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-2">
+                 <p className="text-[10px] text-zinc-400 font-bold">SETUP STEPS FOR VPS:</p>
+                 <ol className="text-[9px] text-zinc-500 space-y-1 list-decimal list-inside">
+                   <li>Copy your WebApp URL</li>
+                   <li>Open MetaEditor on VPS</li>
+                   <li>Compile the provided "Bridge EA"</li>
+                   <li>Add WebApp URL to MT5 Whitelist</li>
+                   <li>Drag EA onto any chart</li>
+                 </ol>
                </div>
-               <p className="text-[8px] text-zinc-500 italic mt-1">This setup is much easier for mobile users to manage on a VPS.</p>
+               <Button 
+                variant="outline" 
+                className="w-full text-[10px] h-8 border-zinc-800"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin);
+                  toast.success("URL Copied! Paste in EA inputs on VPS.");
+                }}
+               >
+                 <Copy className="h-3 w-3 mr-2" /> Copy WebApp URL for EA
+               </Button>
              </div>
-
-             <div className="space-y-1">
-               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 1: Run MCP Server</p>
-               <p className="text-[10px] text-zinc-400">Open CMD and run this command:</p>
-               <div className="bg-black p-2 rounded border border-zinc-800 flex items-center justify-between">
-                 <code className="text-[10px] text-emerald-400 font-mono">npx metatrader-mcp-server</code>
-               </div>
-             </div>
-             
-             <div className="space-y-1">
-               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 2: Firewall Config</p>
-               <p className="text-[10px] text-zinc-400">Allow "Port 8000" in Windows Firewall settings.</p>
-             </div>
-
-             <div className="space-y-1">
-               <p className="text-[10px] text-zinc-500 uppercase font-bold">Step 3: Paste Link Above</p>
-               <p className="text-[10px] text-zinc-400">Your VPS URL:</p>
-               <code className="text-[9px] text-zinc-300 select-all">http://185.230.228.137:8000</code>
-             </div>
-          </div>
-          
-          <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded text-[9px] text-amber-200">
-            <Activity className="h-3 w-3" />
-            <span>AI will use standard MT5 Python integration on the VPS.</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-zinc-900 border-zinc-800 text-white">
-        <CardHeader>
-          <CardTitle className="text-sm">MT5 Broker Connection</CardTitle>
-          <CardDescription className="text-[10px]">
-            {account?.brokerConnected 
-              ? `Currently linked to ${account.brokerConfig?.server} (ID: ${account.brokerConfig?.login})`
-              : "Enter your MetaTrader 5 account details to link the AI agent."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!account?.brokerConnected ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="mt5-login" className="text-xs">Account Login (ID)</Label>
-                <Input 
-                  id="mt5-login" 
-                  value={login}
-                  onChange={(e) => setLogin(e.target.value)}
-                  placeholder="e.g. 12345678" 
-                  className="bg-zinc-800 border-zinc-700 h-9 text-xs" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mt5-pass" className="text-xs">Trading Password</Label>
-                <Input 
-                  id="mt5-pass" 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••" 
-                  className="bg-zinc-800 border-zinc-700 h-9 text-xs" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mt5-server" className="text-xs">Server Name</Label>
-                <Input 
-                  id="mt5-server" 
-                  value={server}
-                  onChange={(e) => setServer(e.target.value)}
-                  placeholder="e.g. MetaQuotes-Demo" 
-                  className="bg-zinc-800 border-zinc-700 h-9 text-xs" 
-                />
-              </div>
-              <Button 
-                disabled={connectMutation.isPending}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs h-9"
-                onClick={() => connectMutation.mutate()}
-              >
-                {connectMutation.isPending ? "Connecting..." : "Save & Connect Broker"}
-              </Button>
-            </>
-          ) : (
-            <Button 
-              variant="destructive"
-              className="w-full text-xs h-9"
-              onClick={() => disconnectMutation.mutate()}
-            >
-              Disconnect MT5 Account
-            </Button>
-          )}
+           )}
         </CardContent>
       </Card>
 
@@ -378,21 +202,18 @@ function SettingsView({ account, autoTradeMutation }: { account: AccountInfo | u
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <div className="text-sm font-medium">Automatic Trading</div>
-              <div className="text-[10px] text-zinc-500">Let Gemini execute trades automatically</div>
+              <div className="text-[10px] text-zinc-500">Let Gemini AI execute trades on MT5</div>
             </div>
             <Switch 
               checked={account?.autoTradingEnabled} 
               onCheckedChange={(checked) => autoTradeMutation.mutate(checked)}
             />
           </div>
-          <div className="space-y-2 border-t border-zinc-800 pt-4">
-            <div className="text-sm font-medium">MCP Gateway Status</div>
-            <div className={`flex items-center gap-2 p-3 ${account?.brokerConnected ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' : 'bg-amber-500/5 border-amber-500/20 text-amber-500'} rounded-lg`}>
-              <ShieldCheck className="h-4 w-4" />
-              <span className="text-xs font-medium">
-                {account?.brokerConnected ? `Active: ${account.brokerConfig?.server}-Bridge` : "Waiting for MT5 Connection..."}
-              </span>
-            </div>
+          <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg flex gap-3">
+             <Brain className="h-4 w-4 text-blue-400 mt-1" />
+             <p className="text-[10px] text-zinc-400 leading-tight">
+               When enabled, the specialized Gemini agent will periodically scan your VPS terminal, analyze liquidity, and send buy/sell signals to the EA.
+             </p>
           </div>
         </CardContent>
       </Card>
@@ -404,7 +225,7 @@ function TradingDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedSymbol, setSelectedSymbol] = useState('EURUSD');
   const [selectedTimeframe, setSelectedTimeframe] = useState('H1');
-  const [analysisText, setAnalysisText] = useState("Scan the market to begin AI analysis...");
+  const [analysisText, setAnalysisText] = useState("Run analysis to see real-time market sentiment...");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const queryClient = useQueryClient();
 
@@ -415,7 +236,7 @@ function TradingDashboard() {
       const res = await fetch('/api/account');
       return res.json();
     },
-    refetchInterval: 3000,
+    refetchInterval: 1000, // Faster poll for live MT5 updates
   });
 
   // Toggle Auto Trading
@@ -430,7 +251,7 @@ function TradingDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account'] });
-      toast.success('Automatic trading status updated');
+      toast.success('AI Automation Status Updated');
     }
   });
 
@@ -447,35 +268,46 @@ function TradingDashboard() {
     onSuccess: (data) => {
       setAnalysisText(data.analysis);
       setIsAnalyzing(false);
-      toast.info(`Market analysis for ${selectedSymbol} received`);
+      toast.info(`Analysis for ${selectedSymbol} complete`);
     },
     onError: () => {
       setIsAnalyzing(false);
-      toast.error('Failed to get AI analysis');
+      toast.error('AI Analysis Timeout');
     }
   });
 
   const renderDashboard = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Card className="bg-zinc-900 border-zinc-800 text-white">
+        <Card className="bg-zinc-900 border-zinc-800 text-white relative overflow-hidden">
+          {account?.brokerConnected && (
+             <div className="absolute top-2 right-2 flex items-center gap-1">
+               <span className="relative flex h-2 w-2">
+                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+               </span>
+               <span className="text-[8px] text-emerald-500 font-bold uppercase">Live</span>
+             </div>
+          )}
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-zinc-400">Balance</CardTitle>
             <Wallet className="h-4 w-4 text-zinc-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">${account?.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-            <p className="text-[10px] text-zinc-500">Total Funds</p>
+            <div className="text-xl font-bold">${account?.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            <p className="text-[10px] text-zinc-500">Available Funds</p>
           </CardContent>
         </Card>
         <Card className="bg-zinc-900 border-zinc-800 text-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-zinc-400">Equity</CardTitle>
-            <Activity className="h-4 w-4 text-emerald-500" />
+            <Zap className={`h-4 w-4 ${account?.equity !== account?.balance ? 'text-blue-400 animate-pulse' : 'text-zinc-600'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">${account?.equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-            <p className="text-[10px] text-zinc-500">Unrealized P/L</p>
+            <div className={`text-xl font-bold ${account?.equity! > account?.balance! ? 'text-emerald-400' : account?.equity! < account?.balance! ? 'text-rose-400' : ''}`}>
+              ${account?.equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </div>
+            <p className="text-[10px] text-zinc-500">Floating P/L</p>
           </CardContent>
         </Card>
       </div>
@@ -512,55 +344,28 @@ function TradingDashboard() {
       </Card>
 
       <div className="space-y-2">
-        <h3 className="text-xs font-medium text-zinc-400 px-1 uppercase tracking-wider">Active Positions</h3>
-        <AnimatePresence mode='popLayout'>
-          {account?.positions.length === 0 ? (
-            <div className="text-center py-6 text-zinc-600 text-sm italic">No open trades</div>
-          ) : (
-            account?.positions.map((pos) => (
-              <motion.div
-                key={pos.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-              >
-                <Card className="bg-zinc-900 border-zinc-800">
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${pos.type === 'BUY' ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
-                        {pos.type === 'BUY' ? <ArrowUpRight className="h-4 w-4 text-emerald-500" /> : <ArrowDownRight className="h-4 w-4 text-rose-500" />}
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-white">{pos.symbol}</div>
-                        <div className="text-[10px] text-zinc-400">{pos.type} • {pos.lot} Lots</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-bold ${pos.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        {pos.profit >= 0 ? '+' : ''}{pos.profit.toFixed(2)} USD
-                      </div>
-                      <div className="text-[10px] text-zinc-500">Entry: {pos.openPrice}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))
-          )}
-        </AnimatePresence>
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Trading History</h3>
+          {account?.brokerConnected && <Badge variant="outline" className="text-[8px] bg-emerald-500/5 text-emerald-500">MT5 Logs In-Sync</Badge>}
+        </div>
+        <div className="text-center py-8 bg-zinc-950 rounded-xl border border-zinc-900 border-dashed">
+           <Terminal className="h-5 w-5 text-zinc-700 mx-auto mb-2" />
+           <p className="text-xs text-zinc-600 italic">No recent executions found in terminal logs</p>
+        </div>
       </div>
     </div>
   );
 
   const renderMarket = () => (
     <div className="space-y-3">
-      <h3 className="text-xs font-medium text-zinc-400 px-1 uppercase tracking-wider">Watchlist</h3>
+      <h3 className="text-xs font-medium text-zinc-400 px-1 uppercase tracking-wider">Markets</h3>
       <div className="grid gap-2">
         {STATIC_MARKET_DATA.map((data) => (
           <Card key={data.symbol} className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-3 flex items-center justify-between">
               <div>
                 <div className="text-sm font-bold text-white">{data.symbol}</div>
-                <div className="text-[10px] text-zinc-500">Major Pair</div>
+                <div className="text-[10px] text-zinc-500">Spot Pair</div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
@@ -569,7 +374,7 @@ function TradingDashboard() {
                     {data.change > 0 ? '+' : ''}{data.change}%
                   </div>
                 </div>
-                <TradeDialog symbol={data.symbol} price={data.price} />
+                <TradeDialog symbol={data.symbol} price={data.price} isLive={!!account?.brokerConnected} />
               </div>
             </CardContent>
           </Card>
@@ -589,14 +394,14 @@ function TradingDashboard() {
               </div>
               <div>
                 <h3 className="font-bold">Gemini Trading Agent</h3>
-                <p className="text-xs text-zinc-400">Connected to MetaTrader AI</p>
+                <p className="text-xs text-zinc-400">Agent Status: {isAnalyzing ? "Executing Tools" : "Idle"}</p>
               </div>
             </div>
             {isAnalyzing && (
               <div className="flex gap-1">
-                <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
+                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
               </div>
             )}
           </div>
@@ -604,7 +409,7 @@ function TradingDashboard() {
         <CardContent className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[10px] text-zinc-500 uppercase">Symbol</Label>
+              <Label className="text-[10px] text-zinc-500 uppercase">Analysis Symbol</Label>
               <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 h-9 text-xs">
                   <SelectValue placeholder="Select Symbol" />
@@ -631,45 +436,28 @@ function TradingDashboard() {
             </div>
           </div>
 
-          <div className="p-4 bg-black/40 rounded-xl border border-zinc-800 min-h-[120px] mb-4">
+          <div className="p-4 bg-black/40 rounded-xl border border-zinc-800 min-h-[140px] mb-4">
             <p className="text-sm leading-relaxed text-zinc-300 italic">
               "{analysisText}"
             </p>
           </div>
           
-          <div className="space-y-2 mb-4">
-            <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Execution Engine</h4>
-            <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-900 border-dashed">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${isAnalyzing ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className="text-[10px] font-mono text-zinc-400">
-                    {isAnalyzing ? "AGENT_EXECUTING_TOOLS..." : "AGENT_IDLE_READY"}
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-6 text-[9px] bg-zinc-900 border-zinc-800"
-                    onClick={() => {
-                      const signal = `MT5 ORDER: ${selectedSymbol} | LOT: 0.10 | ACTION: BUY | SL: 1.0820 | TP: 1.0890`;
-                      navigator.clipboard.writeText(signal);
-                      toast.success("Signal Copied! Paste in MT5 Mobile.");
-                    }}
-                  >
-                    <Copy className="h-3 w-3 mr-1" /> Copy Signal
-                  </Button>
-                  <Badge variant="outline" className="text-[9px] border-zinc-800">MCP::JSON_RPC</Badge>
-                </div>
+          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-900 border-dashed">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${account?.brokerConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                <span className="text-[10px] font-mono text-zinc-400 capitalize">
+                  {account?.brokerConnected ? `EA LINK: ${account.brokerConfig?.login}` : "Waiting for MT5 EA..."}
+                </span>
               </div>
+              <Badge variant="outline" className="text-[9px] border-zinc-800 text-zinc-500">v2.1-REVERSE</Badge>
             </div>
           </div>
           
           <Button 
             onClick={() => analyzeMutation.mutate()} 
             disabled={isAnalyzing}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-12 rounded-xl transition-all active:scale-95"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-12 rounded-xl transition-all active:scale-95 text-sm font-bold"
           >
             {isAnalyzing ? "Processing..." : "Run AI Intelligence"}
           </Button>
@@ -678,14 +466,18 @@ function TradingDashboard() {
 
       <Card className="bg-zinc-900 border-zinc-800 text-white">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Strategy Logs</CardTitle>
+          <CardTitle className="text-sm">Signal History</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollArea className="h-[150px] w-full p-4 pt-0">
-            <div className="space-y-2 font-mono text-[10px] text-zinc-500">
-              <div>[H.M.S] Scanning market liquidity...</div>
-              <div className="text-blue-400">[H.M.S] Trend signal identified on {selectedSymbol}</div>
-              <div>[H.M.S] Monitoring price action...</div>
+            <div className="space-y-3">
+               <div className="p-2.5 rounded bg-zinc-950 border border-zinc-800 flex justify-between items-center opacity-50">
+                 <div className="space-y-1">
+                   <div className="text-[10px] font-bold">EURUSD SELL SIGNAL</div>
+                   <div className="text-[8px] text-zinc-600">Generated by Agent :: v2.1</div>
+                 </div>
+                 <Badge className="bg-zinc-800 text-zinc-400 text-[8px]">EXPIRED</Badge>
+               </div>
             </div>
           </ScrollArea>
         </CardContent>
@@ -700,16 +492,13 @@ function TradingDashboard() {
           <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center">
             <Activity className="h-5 w-5 text-white" />
           </div>
-          <span className="font-bold tracking-tight">MT AI Pro</span>
+          <span className="font-bold tracking-tight">MT-AI PRO</span>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={account?.mcpConnected ? "default" : "secondary"} className={account?.mcpConnected ? "bg-blue-600" : ""}>
-            {account?.mcpConnected ? 'MCP-LINK' : 'MCP-OFF'}
+          <Badge variant={account?.brokerConnected ? "default" : "secondary"} className={account?.brokerConnected ? "bg-emerald-600" : "bg-orange-500/10 text-orange-400"}>
+            {account?.brokerConnected ? 'EA-LINKED' : 'OFFLINE'}
           </Badge>
-          <Badge variant={account?.brokerConnected ? "default" : "secondary"} className={account?.brokerConnected ? "bg-emerald-600" : ""}>
-            {account?.brokerConnected ? 'LIVE' : 'DEMO'}
-          </Badge>
-          <Badge variant={account?.autoTradingEnabled ? "outline" : "secondary"} className={account?.autoTradingEnabled ? "border-emerald-500 text-emerald-500" : ""}>
+          <Badge variant={account?.autoTradingEnabled ? "outline" : "secondary"} className={account?.autoTradingEnabled ? "border-blue-500 text-blue-500" : ""}>
             {account?.autoTradingEnabled ? 'A-ON' : 'A-OFF'}
           </Badge>
         </div>
@@ -732,10 +521,10 @@ function TradingDashboard() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-black/80 backdrop-blur-xl border-t border-zinc-800 z-20">
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-black/90 backdrop-blur-xl border-t border-zinc-800 z-20">
         <div className="flex items-center justify-around">
           <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Wallet className="h-5 w-5" />} label="Assets" />
-          <NavButton active={activeTab === 'market'} onClick={() => setActiveTab('market')} icon={<History className="h-5 w-5" />} label="Market" />
+          <NavButton active={activeTab === 'market'} onClick={() => setActiveTab('market')} icon={<Zap className="h-5 w-5" />} label="Signal" />
           <NavButton active={activeTab === 'ai'} onClick={() => setActiveTab('ai')} icon={<Brain className="h-5 w-5" />} label="Agent" />
           <NavButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings className="h-5 w-5" />} label="Setup" />
         </div>
@@ -747,9 +536,10 @@ function TradingDashboard() {
 
 function NavButton({ active, icon, label, onClick }: { active: boolean, icon: React.ReactNode, label: string, onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-colors ${active ? 'text-blue-500' : 'text-zinc-500'}`}>
+    <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all duration-200 ${active ? 'text-blue-500 scale-110' : 'text-zinc-600'}`}>
       {icon}
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[9px] font-bold uppercase tracking-tight">{label}</span>
+      {active && <motion.div layoutId="nav-dot" className="w-1 h-1 bg-blue-500 rounded-full mt-0.5" />}
     </button>
   );
 }

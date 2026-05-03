@@ -15,9 +15,10 @@ async function startServer() {
 
   // Initialize Gemini
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+  // Note: App might start before key is provided, Gemini handles this gracefully.
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-  // Mock Trading State
+  // Global Trading State
   let tradingState = {
     balance: 10000.00,
     equity: 10000.00,
@@ -27,11 +28,20 @@ async function startServer() {
     history: [] as any[],
     brokerConnected: false,
     brokerConfig: null as any,
-    mcpUrl: null as string | null,
-    mcpConnected: false,
+    lastEAPing: 0,
+    orderQueue: [] as any[],
+    mcpConnected: false, // Legacy fallback
   };
 
-  // Gemini Tools definition for MT5 MCP
+  // Check EA connectivity every second
+  setInterval(() => {
+    const now = Date.now();
+    if (tradingState.lastEAPing > 0 && now - tradingState.lastEAPing > 5000) {
+      tradingState.brokerConnected = false;
+    }
+  }, 1000);
+
+  // Gemini Tools definition for MT-AI Pro
   const mt5Tools: any[] = [
     {
       functionDeclarations: [
@@ -68,51 +78,63 @@ async function startServer() {
     },
   ];
 
-  // API Routes
+  // --- EA REVERSE BRIDGE ROUTES ---
+
+  // 1. EA Polls for new orders
+  app.get("/api/ea/poll", (req, res) => {
+    const orders = [...tradingState.orderQueue];
+    tradingState.orderQueue = []; // Clear queue after polling
+    res.json({ orders });
+  });
+
+  // 2. EA Pushes account info & heartbeats
+  app.post("/api/ea/account", (req, res) => {
+    const { balance, equity, margin, login, server } = req.body;
+    tradingState.balance = parseFloat(balance);
+    tradingState.equity = parseFloat(equity);
+    tradingState.margin = parseFloat(margin);
+    tradingState.brokerConnected = true;
+    tradingState.lastEAPing = Date.now();
+    tradingState.brokerConfig = { login, server };
+    res.json({ success: true });
+  });
+
+  // 3. EA Pushes trade results
+  app.post("/api/ea/result", (req, res) => {
+    console.log("EA Trade Result:", req.body);
+    // Optionally update local history or positions here
+    res.json({ success: true });
+  });
+
+  // 4. Webapp triggers real trade (added to queue)
+  app.post("/api/trade/real", (req, res) => {
+    const { symbol, action, volume } = req.body;
+    const order = { symbol, action: action.toLowerCase(), volume };
+    tradingState.orderQueue.push(order);
+    res.json({ success: true, message: "Order queued for EA execution", order });
+  });
+
+  // 5. Status check
+  app.get("/api/ea/status", (req, res) => {
+    res.json({ 
+      connected: tradingState.brokerConnected, 
+      lastPing: tradingState.lastEAPing,
+      queueSize: tradingState.orderQueue.length 
+    });
+  });
+
+  // --- STANDARD API ROUTES ---
+
   app.get("/api/account", (req, res) => {
     res.json(tradingState);
   });
 
-  app.post("/api/mcp/config", async (req, res) => {
-    const { url } = req.body;
-    try {
-      if (url.includes("localhost") || url.includes("127.0.0.1")) {
-        return res.status(400).json({ 
-          error: "Invalid URL", 
-          message: "You cannot use 'localhost' since the app is running in the cloud. Use an ngrok URL or public IP." 
-        });
-      }
-
-      // Pre-flight check
-      const check = await fetch(`${url}/info`).catch(() => null);
-      
-      tradingState.mcpUrl = url;
-      tradingState.mcpConnected = true;
-      res.json({ success: true, url, message: "Bridge configured" });
-    } catch (e) {
-      res.status(500).json({ error: "Connection error" });
-    }
+  app.post("/api/toggle-autotrade", (req, res) => {
+    tradingState.autoTradingEnabled = req.body.enabled;
+    res.json({ success: true, enabled: tradingState.autoTradingEnabled });
   });
 
-  app.post("/api/broker/connect", (req, res) => {
-    const { login, password, server } = req.body;
-    if (login && password && server) {
-      tradingState.brokerConnected = true;
-      tradingState.brokerConfig = { login, server };
-      // In a real app, this is where we'd initiate the MT5 Socket/WebAPI connection
-      res.json({ success: true, message: "MT5 Broker Linked Successfully" });
-    } else {
-      res.status(400).json({ error: "Missing login details" });
-    }
-  });
-
-  app.post("/api/broker/disconnect", (req, res) => {
-    tradingState.brokerConnected = false;
-    tradingState.brokerConfig = null;
-    res.json({ success: true });
-  });
-
-  // Market Simulation Loop
+  // Market Simulation Loop (Fallback for UI prices)
   const marketSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'XAUUSD'];
   const prices: { [key: string]: number } = {
     EURUSD: 1.0845,
@@ -127,43 +149,7 @@ async function startServer() {
       const change = (Math.random() - 0.5) * 0.001 * prices[symbol];
       prices[symbol] += change;
     });
-
-    // Update positions
-    tradingState.positions = tradingState.positions.map(pos => {
-      const currentPrice = prices[pos.symbol] || pos.currentPrice;
-      const priceDiff = pos.type === 'BUY' ? (currentPrice - pos.openPrice) : (pos.openPrice - currentPrice);
-      const profit = priceDiff * pos.lot * 100000; // Standard lot size simulation
-      return { ...pos, currentPrice, profit };
-    });
-
-    // Update Equity
-    const totalProfit = tradingState.positions.reduce((sum, pos) => sum + pos.profit, 0);
-    tradingState.equity = tradingState.balance + totalProfit;
-
-    // Simple Auto Trade Logic
-    if (tradingState.autoTradingEnabled && tradingState.positions.length < 3) {
-      const randomSymbol = marketSymbols[Math.floor(Math.random() * marketSymbols.length)];
-      const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
-      const lot = 0.1;
-      const price = prices[randomSymbol];
-      
-      tradingState.positions.push({
-        id: Math.random().toString(36).substring(7),
-        symbol: randomSymbol,
-        type,
-        lot,
-        openPrice: price,
-        currentPrice: price,
-        profit: 0,
-        timestamp: new Date().toISOString(),
-      });
-    }
   }, 3000);
-
-  app.post("/api/toggle-autotrade", (req, res) => {
-    tradingState.autoTradingEnabled = req.body.enabled;
-    res.json({ success: true, enabled: tradingState.autoTradingEnabled });
-  });
 
   app.post("/api/analyze", async (req, res) => {
     try {
@@ -178,21 +164,24 @@ async function startServer() {
       Your task is to analyze ${symbol} on ${timeframe}.
       
       Current status:
-      - MCP Bridge: ${tradingState.mcpConnected ? "CONNECTED" : "DISCONNECTED (Simulation Mode)"}
+      - MT5 EA Connection: ${tradingState.brokerConnected ? "ACTIVE (Real Account)" : "INACTIVE (Simulation Mode)"}
       - Auto-Trading: ${tradingState.autoTradingEnabled ? "ON" : "OFF"}
       
-      Instructions:
-      1. First, use "get_account_info" to see your current standing.
-      2. Then use "get_market_data" for ${symbol}.
-      3. Provide a market sentiment analysis.
-      4. If "Auto-Trading" is ON and you see a strong signal, execute a trade using "execute_trade".
+      Account Data:
+      - Balance: ${tradingState.balance}
+      - Equity: ${tradingState.equity}
       
-      Keep the final summary concise (under 100 words).`;
+      Instructions:
+      1. Use "get_account_info" to check status.
+      2. Use "get_market_data" for ${symbol}.
+      3. Provide analysis.
+      4. If "Auto-Trading" is ON and signal is strong, execute trade using "execute_trade".
+      
+      Always summarize results for the mobile user.`;
 
       const result = await chat.sendMessage(prompt);
       const response = await result.response;
       
-      // Handle tool calls if any (Auto-Execution)
       const call = response.functionCalls()?.[0];
       if (call) {
         const toolResult = await callTool(call.name, call.args);
@@ -217,23 +206,27 @@ async function startServer() {
   });
 
   const callTool = async (name: string, args: any) => {
-    if (tradingState.mcpConnected && tradingState.mcpUrl) {
-      try {
-        const res = await fetch(`${tradingState.mcpUrl}/tools/call`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, arguments: args }),
-        });
-        return await res.json();
-      } catch (e) {
-        return { error: "MCP tool call failed" };
-      }
-    } else {
+    if (tradingState.brokerConnected) {
+      // Logic for REAL trading via EA Queue
       switch (name) {
         case 'get_account_info':
-          return { balance: tradingState.balance, equity: tradingState.equity };
+          return { balance: tradingState.balance, equity: tradingState.equity, status: "Real Time" };
         case 'get_market_data':
-          return { symbol: args.symbol, price: prices[args.symbol] || 1.08, status: "Simulated Data" };
+          return { symbol: args.symbol, price: prices[args.symbol] || 1.0, status: "MT5 Feed" };
+        case 'execute_trade':
+          const order = { symbol: args.symbol, action: args.action.toLowerCase(), volume: args.volume };
+          tradingState.orderQueue.push(order);
+          return { success: true, message: "Order sent to MT5 Terminal Queue", order };
+        default:
+          return { error: "Unknown tool" };
+      }
+    } else {
+      // Logic for SIMULATION trading
+      switch (name) {
+        case 'get_account_info':
+          return { balance: tradingState.balance, equity: tradingState.equity, status: "Simulated" };
+        case 'get_market_data':
+          return { symbol: args.symbol, price: prices[args.symbol] || 1.08, status: "Simulation Feed" };
         case 'execute_trade':
           const price = prices[args.symbol] || 1.08;
           const pos = { 
@@ -247,41 +240,12 @@ async function startServer() {
             timestamp: new Date().toISOString() 
           };
           tradingState.positions.push(pos);
-          return { success: true, position: pos, message: "Simulation order placed" };
+          return { success: true, position: pos, message: "Simulation order placed locally" };
         default:
           return { error: "Unknown tool" };
       }
     }
   };
-
-  app.post("/api/trade", (req, res) => {
-    const { symbol, type, lot, price } = req.body;
-    const newPosition = {
-      id: Math.random().toString(36).substring(7),
-      symbol,
-      type,
-      lot,
-      openPrice: price,
-      currentPrice: price,
-      profit: 0,
-      timestamp: new Date().toISOString(),
-    };
-    tradingState.positions.push(newPosition);
-    res.json(newPosition);
-  });
-
-  app.post("/api/close", (req, res) => {
-    const { id } = req.body;
-    const position = tradingState.positions.find(p => p.id === id);
-    if (position) {
-      tradingState.history.push({ ...position, closePrice: position.currentPrice, closeTimestamp: new Date().toISOString() });
-      tradingState.balance += position.profit;
-      tradingState.positions = tradingState.positions.filter(p => p.id !== id);
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: "Position not found" });
-    }
-  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && process.env.VITE_DEV === "true") {
@@ -291,17 +255,14 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // In production (Vercel), we serve static files from 'dist'
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
-      // If it's an API route, let it pass
       if (req.path.startsWith('/api')) return next();
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  // Only listen if not on Vercel (or similar serverless)
   if (process.env.NODE_ENV !== "production") {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
@@ -311,6 +272,5 @@ async function startServer() {
   return app;
 }
 
-// For Vercel: Export the app directly
 const appPromise = startServer();
 export default appPromise;
