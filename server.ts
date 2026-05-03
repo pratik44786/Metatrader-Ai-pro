@@ -130,13 +130,18 @@ app.post("/api/ea/ping", async (req, res) => {
 });
 
 // Alias for older EA versions or different naming conventions
-app.post("/api/ea/account", async (req, res) => {
-  const data = req.body;
-  if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
-  if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
-  state.eaConnected = true;
-  state.lastEAPing = Date.now();
-  res.json({ success: true });
+app.all("/api/ea/account", async (req, res) => {
+  const data = req.body || {};
+  if (req.method === "POST") {
+    if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
+    if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
+    state.eaConnected = true;
+    state.lastEAPing = Date.now();
+    return res.json({ success: true });
+  }
+  // If GET, just return current state
+  if (msSinceLastPing() > 5000) state.eaConnected = false;
+  res.json(state);
 });
 
 app.get("/api/ea/orders", (req, res) => {
@@ -219,6 +224,14 @@ async function setupVite() {
     
     app.listen(3000, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:3000`);
+    });
+  } else {
+    // Serving static files in production (for environments that don't use vercel.json rewrites)
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 }
