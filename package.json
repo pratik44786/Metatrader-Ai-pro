@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx api/index.ts",
     "build": "vite build",
     "lint": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node --loader ts-node/esm server.ts"
+    "start": "node --loader ts-node/esm api/index.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

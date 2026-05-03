@@ -9,6 +9,12 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
+// Debug logging for Vercel
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.path}`);
+  next();
+});
+
 // Global State (In-Memory)
 let state = {
   balance: 0,
@@ -103,8 +109,11 @@ Respond in this EXACT JSON format only:
 
 // --- EA ROUTES ---
 
-app.post("/api/ea/ping", async (req, res) => {
-  const data = req.body;
+app.get("/api", (req, res) => res.json({ status: "MT-AI PRO API LIVE" }));
+app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+
+app.post(["/api/ea/ping", "/api/ea/account"], async (req, res) => {
+  const data = req.body || {};
   if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
   if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
   if (data.margin !== undefined) state.margin = parseFloat(data.margin) || 0;
@@ -129,33 +138,19 @@ app.post("/api/ea/ping", async (req, res) => {
   });
 });
 
-// Alias for older EA versions or different naming conventions
-app.all("/api/ea/account", async (req, res) => {
-  const data = req.body || {};
-  if (req.method === "POST") {
-    if (data.balance !== undefined) state.balance = parseFloat(data.balance) || 0;
-    if (data.equity !== undefined) state.equity = parseFloat(data.equity) || 0;
-    state.eaConnected = true;
-    state.lastEAPing = Date.now();
-    return res.json({ success: true });
+app.get(["/api/ea/orders", "/api/ea/poll"], (req, res) => {
+  if (msSinceLastPing() > 10000) state.eaConnected = false;
+  const orders = [...state.orderQueue];
+  state.orderQueue = [];
+  res.json({ orders });
+});
+
+app.all("/api/ea/account", (req, res) => {
+  if (req.method === "GET") {
+     if (msSinceLastPing() > 10000) state.eaConnected = false;
+     return res.json(state);
   }
-  // If GET, just return current state
-  if (msSinceLastPing() > 5000) state.eaConnected = false;
-  res.json(state);
-});
-
-app.get("/api/ea/orders", (req, res) => {
-  if (msSinceLastPing() > 5000) state.eaConnected = false;
-  const orders = [...state.orderQueue];
-  state.orderQueue = [];
-  res.json({ orders });
-});
-
-app.get("/api/ea/poll", (req, res) => {
-  if (msSinceLastPing() > 5000) state.eaConnected = false;
-  const orders = [...state.orderQueue];
-  state.orderQueue = [];
-  res.json({ orders });
+  res.status(405).send("Method Not Allowed");
 });
 
 app.post("/api/ea/result", (req, res) => {
@@ -214,7 +209,7 @@ app.post("/api/trade/manual", (req, res) => {
 // --- VITE MIDDLEWARE ---
 
 async function setupVite() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -224,14 +219,6 @@ async function setupVite() {
     
     app.listen(3000, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:3000`);
-    });
-  } else {
-    // Serving static files in production (for environments that don't use vercel.json rewrites)
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res, next) => {
-      if (req.path.startsWith('/api')) return next();
-      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 }
