@@ -80,46 +80,70 @@ async function startServer() {
 
   // --- EA REVERSE BRIDGE ROUTES ---
 
+  // Order queue and heartbeat tracking
+  let orderQueue: any[] = [];
+  let lastEAPing: number = 0;
+
   // 1. EA Polls for new orders
   app.get("/api/ea/poll", (req, res) => {
-    const orders = [...tradingState.orderQueue];
-    tradingState.orderQueue = []; // Clear queue after polling
+    // Check for timeout internally during poll
+    if (lastEAPing > 0 && Date.now() - lastEAPing > 5000) {
+      tradingState.brokerConnected = false;
+    }
+    const orders = [...orderQueue];
+    orderQueue = []; // Clear queue after polling
     res.json({ orders });
   });
 
-  // 2. EA Pushes account info & heartbeats
+  // 2. EA Pushes account info & heartbeats every second
   app.post("/api/ea/account", (req, res) => {
-    const { balance, equity, margin, login, server } = req.body;
-    tradingState.balance = parseFloat(balance);
-    tradingState.equity = parseFloat(equity);
-    tradingState.margin = parseFloat(margin);
+    const data = req.body;
+    tradingState.balance = data.balance || tradingState.balance;
+    tradingState.equity = data.equity || tradingState.equity;
+    tradingState.margin = data.margin || tradingState.margin;
     tradingState.brokerConnected = true;
-    tradingState.lastEAPing = Date.now();
-    tradingState.brokerConfig = { login, server };
-    res.json({ success: true });
+    tradingState.brokerConfig = {
+      login: data.login,
+      server: data.server,
+      currency: data.currency,
+      leverage: data.leverage,
+      openPositions: data.openPositions,
+    };
+    lastEAPing = Date.now();
+    res.json({ success: true, received: true });
   });
 
-  // 3. EA Pushes trade results
+  // 3. EA Pushes trade execution results
   app.post("/api/ea/result", (req, res) => {
-    console.log("EA Trade Result:", req.body);
-    // Optionally update local history or positions here
+    const data = req.body;
+    console.log("MT5 EA Trade Result:", data);
+    // Sync balance/equity if provided in result
+    if (data.balance) tradingState.balance = data.balance;
+    if (data.equity) tradingState.equity = data.equity;
     res.json({ success: true });
   });
 
-  // 4. Webapp triggers real trade (added to queue)
+  // 4. Webapp triggers real trade (adds to queue)
   app.post("/api/trade/real", (req, res) => {
-    const { symbol, action, volume } = req.body;
-    const order = { symbol, action: action.toLowerCase(), volume };
-    tradingState.orderQueue.push(order);
-    res.json({ success: true, message: "Order queued for EA execution", order });
+    const order = {
+      id: Math.random().toString(36).substring(7),
+      symbol: req.body.symbol,
+      action: req.body.action ? req.body.action.toLowerCase() : "buy", 
+      volume: req.body.volume || 0.01,
+      timestamp: Date.now(),
+    };
+    orderQueue.push(order);
+    res.json({ success: true, orderId: order.id, message: "Order queued for MT5 execution" });
   });
 
-  // 5. Status check
+  // 5. EA Connection status check
   app.get("/api/ea/status", (req, res) => {
+    const connected = lastEAPing > 0 && Date.now() - lastEAPing < 5000;
     res.json({ 
-      connected: tradingState.brokerConnected, 
-      lastPing: tradingState.lastEAPing,
-      queueSize: tradingState.orderQueue.length 
+      connected, 
+      lastPing: lastEAPing,
+      secondsAgo: Math.floor((Date.now() - lastEAPing) / 1000),
+      queueSize: orderQueue.length 
     });
   });
 
