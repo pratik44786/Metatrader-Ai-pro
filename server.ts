@@ -42,6 +42,8 @@ async function startServer() {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
+  const lastEAPing = () => Date.now() - state.lastEAPing;
+
   // AI Analysis Engine
   const runAIAnalysis = async () => {
     if (!state.eaConnected || lastEAPing() > 30000) return; // Only analyze if EA is fresh
@@ -103,8 +105,6 @@ Respond in this EXACT JSON format only:
       return null;
     }
   };
-
-  const lastEAPing = () => Date.now() - state.lastEAPing;
 
   // AI Interval (Every 30 seconds)
   setInterval(() => {
